@@ -10,6 +10,11 @@ go build -o ssh-tunnel ./cmd/ssh-tunnel
 
 The resulting binary can be copied to Linux, macOS, or Windows hosts built for the matching `GOOS`/`GOARCH`.
 
+
+## Release builds
+
+Use `make release VERSION=v0.1.0` to create Linux, macOS, and Windows archives with SHA-256 checksums. See [`docs/release.md`](docs/release.md) for local and GitHub release steps.
+
 ## Configuration
 
 Default configuration path:
