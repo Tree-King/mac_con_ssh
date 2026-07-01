@@ -1,0 +1,23 @@
+servers:
+  local-test:
+    host: "127.0.0.1"
+    port: 2222
+    username: "tunnel"
+    auth:
+      type: "password_totp"
+      password: "password"
+      totp_seed: "JBSWY3DPEHPK3PXP"
+    forwards:
+      - name: "http"
+        local_host: "127.0.0.1"
+        local_port: 8080
+        remote_host: "127.0.0.1"
+        remote_port: 8000
+    reconnect:
+      enabled: true
+      initial_delay_seconds: 3
+      max_delay_seconds: 30
+      max_retries: 0
+    keepalive:
+      enabled: true
+      interval_seconds: 15
