@@ -42,11 +42,6 @@ Each archive includes the binary, `README.md`, and `config.example.yaml`.
 
 ## GitHub release
 
-Tag a version and push it:
+The release workflow runs on every push to `main`, including merged pull requests. It runs tests, runs `go vet`, builds all release artifacts, deletes the previous `latest` GitHub Release and `latest` tag if they exist, and uploads the new artifacts to a fresh `latest` release for the current commit.
 
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-The release workflow runs tests, runs `go vet`, builds all release artifacts, and uploads them to the GitHub Release for the tag.
+You can also start the same workflow manually from the GitHub Actions `workflow_dispatch` button.
