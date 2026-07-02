@@ -38,10 +38,6 @@ jobs:
         with:
           script: |
             const tag = process.env.RELEASE_TAG;
-            const isMissing = (error) => {
-              const message = String(error.response?.data?.message || error.message || '');
-              return error.status === 404 || (error.status === 422 && message.includes('Reference does not exist'));
-            };
 
             try {
               const release = await github.rest.repos.getReleaseByTag({
@@ -56,18 +52,13 @@ jobs:
               });
               core.info(`Deleted existing release for ${tag}`);
             } catch (error) {
-              if (!isMissing(error)) {
+              if (error.status !== 404) {
                 throw error;
               }
               core.info(`No existing release found for ${tag}`);
             }
 
             try {
-              await github.rest.git.getRef({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                ref: `tags/${tag}`,
-              });
               await github.rest.git.deleteRef({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -75,7 +66,7 @@ jobs:
               });
               core.info(`Deleted existing tag ${tag}`);
             } catch (error) {
-              if (!isMissing(error)) {
+              if (error.status !== 404) {
                 throw error;
               }
               core.info(`No existing tag found for ${tag}`);
