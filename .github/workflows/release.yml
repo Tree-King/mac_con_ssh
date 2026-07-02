@@ -38,9 +38,6 @@ jobs:
         with:
           script: |
             const tag = process.env.RELEASE_TAG;
-            const isMissing = (error) =>
-              error.status === 404 ||
-              (error.status === 422 && error.response?.data?.message === 'Reference does not exist');
 
             try {
               const release = await github.rest.repos.getReleaseByTag({
@@ -69,7 +66,7 @@ jobs:
               });
               core.info(`Deleted existing tag ${tag}`);
             } catch (error) {
-              if (!isMissing(error)) {
+              if (error.status !== 404) {
                 throw error;
               }
               core.info(`No existing tag found for ${tag}`);
