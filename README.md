@@ -78,6 +78,7 @@ ssh-tunnel version
 - SSH connection failure: verify `host`, `port`, firewall rules, and that the server is reachable.
 - Password failure: verify `username` and `auth.password`.
 - Key authentication failure: verify `username`, `auth.key_path`, private key permissions, and `auth.key_passphrase` for encrypted keys.
+- If `key_totp` is rejected with an error that only mentions `password_totp`, rebuild or replace the executable; `ssh-tunnel version` should list both `password_totp` and `key_totp` in supported auth modes.
 - TOTP failure: verify `auth.totp_seed`, local time, server time, and PAM/Google Authenticator settings.
 - Local port in use: change `local_port` or stop the process using it.
 - Remote port unreachable: verify `remote_host` and `remote_port` from the SSH server's network namespace.

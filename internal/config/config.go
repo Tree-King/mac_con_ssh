@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -24,6 +25,13 @@ type Server struct {
 	Keepalive Keepalive `yaml:"keepalive"`
 	Log       Log       `yaml:"log"`
 }
+
+var SupportedAuthTypes = []string{"password_totp", "key_totp"}
+
+func SupportedAuthTypesText() string {
+	return strings.Join(SupportedAuthTypes, " or ")
+}
+
 type Auth struct {
 	Type          string `yaml:"type"`
 	Password      string `yaml:"password"`
@@ -132,7 +140,7 @@ func (s Server) Validate() error {
 			return errors.New("auth.key_path is required")
 		}
 	default:
-		return errors.New("auth.type must be password_totp or key_totp")
+		return fmt.Errorf("auth.type must be %s", SupportedAuthTypesText())
 	}
 	if s.Auth.TOTPSeed == "" {
 		return errors.New("auth.totp_seed is required")
