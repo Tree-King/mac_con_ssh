@@ -57,17 +57,38 @@ func commonFlags(name string, args []string) (string, string, error) {
 	fs.SetOutput(os.Stderr)
 	cfgPath := fs.String("config", config.DefaultPath(), "configuration file path")
 	serverFlag := fs.String("server", "", "server name")
-	if err := fs.Parse(args); err != nil {
+	positionals, err := parseInterspersedFlags(fs, args)
+	if err != nil {
 		return "", "", err
 	}
 	server := *serverFlag
-	if server == "" && fs.NArg() > 0 {
-		server = fs.Arg(0)
+	if server == "" && len(positionals) > 0 {
+		server = positionals[0]
 	}
 	if server == "" {
 		return "", "", errors.New("missing server name")
 	}
 	return server, *cfgPath, nil
+}
+
+func parseInterspersedFlags(fs *flag.FlagSet, args []string) ([]string, error) {
+	positionals := make([]string, 0, len(args))
+	for len(args) > 0 {
+		if args[0] == "--" {
+			positionals = append(positionals, args[1:]...)
+			break
+		}
+		if strings.HasPrefix(args[0], "-") && args[0] != "-" {
+			if err := fs.Parse(args); err != nil {
+				return nil, err
+			}
+			args = fs.Args()
+			continue
+		}
+		positionals = append(positionals, args[0])
+		args = args[1:]
+	}
+	return positionals, nil
 }
 
 func runCommand(args []string) error {
