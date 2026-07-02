@@ -13,7 +13,7 @@ The resulting binary can be copied to Linux, macOS, or Windows hosts built for t
 
 ## Release builds
 
-Use `make release VERSION=v0.1.0` to create Linux, macOS, and Windows archives with SHA-256 checksums. GitHub Actions manual runs upload downloadable workflow artifacts, and tag pushes create GitHub Release downloads. See [`docs/release.md`](docs/release.md) for local and GitHub release steps.
+Use `make release VERSION=v0.1.0` to create Linux, macOS, and Windows archives with SHA-256 checksums. See [`docs/release.md`](docs/release.md) for local and GitHub release steps.
 
 ## Configuration
 
