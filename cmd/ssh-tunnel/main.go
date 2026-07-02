@@ -15,7 +15,6 @@ import (
 
 	"ssh-tunnel/internal/config"
 	"ssh-tunnel/internal/runner"
-	"ssh-tunnel/internal/secrets"
 	"ssh-tunnel/internal/totp"
 )
 
@@ -88,13 +87,6 @@ func runCommand(args []string) error {
 	if err != nil {
 		return err
 	}
-	server, err = secrets.Resolve(server, secrets.NeedPassword|secrets.NeedTOTPSeed)
-	if err != nil {
-		return err
-	}
-	if err := server.ValidateSecrets(true, true); err != nil {
-		return err
-	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	return runner.Run(ctx, serverName, server)
@@ -118,13 +110,6 @@ func checkCommand(args []string) error {
 		return err
 	}
 	if err := server.Validate(); err != nil {
-		return err
-	}
-	server, err = secrets.Resolve(server, secrets.NeedPassword|secrets.NeedTOTPSeed)
-	if err != nil {
-		return err
-	}
-	if err := server.ValidateSecrets(true, true); err != nil {
 		return err
 	}
 	if _, err := totp.Generate(server.Auth.TOTPSeed); err != nil {
@@ -158,13 +143,6 @@ func totpCommand(args []string) error {
 	}
 	server, err := cfg.Server(serverName)
 	if err != nil {
-		return err
-	}
-	server, err = secrets.Resolve(server, secrets.NeedTOTPSeed)
-	if err != nil {
-		return err
-	}
-	if err := server.ValidateSecrets(false, true); err != nil {
 		return err
 	}
 	code, err := totp.Generate(server.Auth.TOTPSeed)

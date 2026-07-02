@@ -5,7 +5,6 @@ servers:
     username: "root"
     auth:
       type: "password_totp"
-      # password and totp_seed may be stored here, or omitted and entered securely at runtime.
       password: "your-password"
       totp_seed: "BASE32_TOTP_SECRET"
     forwards:

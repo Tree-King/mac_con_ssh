@@ -34,8 +34,3 @@ Failure tests:
 - Change `totp_seed` and confirm authentication fails with guidance to check seed and time.
 - Bind `127.0.0.1:8080` with another process and confirm `check` reports the occupied local port.
 - Change `remote_port` to a closed port and confirm per-connection forwarding logs show the remote dial failure.
-
-
-## Secure interactive secret entry
-
-To test entering secrets without storing them in the file, remove `auth.password` and/or `auth.totp_seed` from a copy of `test/sshd-totp/config.yaml`, then run the same `check`, `run`, or `totp` commands from a terminal. The client prompts with hidden input and does not echo the values.

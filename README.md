@@ -13,23 +13,19 @@ The resulting binary can be copied to Linux, macOS, or Windows hosts built for t
 
 ## Release builds
 
-Use `make release VERSION=v0.1.0` to create Linux, macOS, and Windows archives with SHA-256 checksums. GitHub Actions manual runs upload downloadable workflow artifacts, and tag pushes create GitHub Release downloads. See [`docs/release.md`](docs/release.md) for local and GitHub release steps.
+Use `make release VERSION=v0.1.0` to create Linux, macOS, and Windows archives with SHA-256 checksums. See [`docs/release.md`](docs/release.md) for local and GitHub release steps.
 
 ## Configuration
 
-Default configuration path is the current working directory file:
+Default configuration path:
 
 ```text
-./config.yaml
+~/.ssh-tunnel/config.yaml
 ```
 
 Use `--config /path/to/config.yaml` to override it. Keep the file private; on Unix-like systems `0600` is recommended and broader permissions produce a warning.
 
-See [`config.example.yaml`](config.example.yaml) for a complete example. Supported v1 authentication is `password_totp`. The SSH password and TOTP seed can be supplied in two ways:
-
-1. Store `auth.password` and `auth.totp_seed` in the YAML configuration file.
-2. Omit either value from the YAML file and enter it interactively when prompted. Interactive input uses hidden terminal input and is not printed to logs or the shell command line.
-
+See [`config.example.yaml`](config.example.yaml) for a complete example. Supported v1 authentication is `password_totp`:
 
 ```yaml
 auth:
@@ -38,7 +34,7 @@ auth:
   totp_seed: "BASE32_TOTP_SECRET"
 ```
 
-Passwords, seeds, interactively entered secrets, and generated TOTP codes are never written to logs.
+Passwords, seeds, and generated TOTP codes are never written to logs.
 
 ## Usage
 

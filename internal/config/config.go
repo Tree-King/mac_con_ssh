@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"runtime"
 
 	"gopkg.in/yaml.v3"
@@ -50,6 +51,9 @@ type Log struct {
 }
 
 func DefaultPath() string {
+	if home, err := os.UserHomeDir(); err == nil {
+		return filepath.Join(home, ".ssh-tunnel", "config.yaml")
+	}
 	return "config.yaml"
 }
 func Load(path string) (*Config, []string, error) {
@@ -119,6 +123,12 @@ func (s Server) Validate() error {
 	if s.Auth.Type != "password_totp" {
 		return errors.New("only auth.type password_totp is supported")
 	}
+	if s.Auth.Password == "" {
+		return errors.New("auth.password is required")
+	}
+	if s.Auth.TOTPSeed == "" {
+		return errors.New("auth.totp_seed is required")
+	}
 	if len(s.Forwards) == 0 {
 		return errors.New("at least one forward is required")
 	}
@@ -134,16 +144,6 @@ func (s Server) Validate() error {
 	}
 	return nil
 }
-func (s Server) ValidateSecrets(requirePassword, requireTOTPSeed bool) error {
-	if requirePassword && s.Auth.Password == "" {
-		return errors.New("auth.password is required in config or via secure interactive input")
-	}
-	if requireTOTPSeed && s.Auth.TOTPSeed == "" {
-		return errors.New("auth.totp_seed is required in config or via secure interactive input")
-	}
-	return nil
-}
-
 func checkPerms(path string) []string {
 	if runtime.GOOS == "windows" {
 		return nil

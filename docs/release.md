@@ -42,8 +42,6 @@ Each archive includes the binary, `README.md`, and `config.example.yaml`.
 
 ## GitHub release
 
-### Tag-based release
-
 Tag a version and push it:
 
 ```bash
@@ -51,13 +49,4 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-The release workflow runs tests, runs `go vet`, builds all release artifacts, uploads them as workflow artifacts, and uploads them to the GitHub Release for the tag.
-
-### Manual Actions run
-
-From the GitHub web UI, open **Actions → release → Run workflow**. A manual run always uploads downloadable files under the workflow run's **Artifacts** section.
-
-Optional inputs:
-
-- `version`: version text embedded in binary names. If omitted or left as `manual`, the workflow uses `manual-<run-number>-<short-sha>`.
-- `create_github_release`: when checked, the workflow also creates or updates a GitHub Release using the resolved version as the tag name. Leave it unchecked if you only want workflow artifacts.
+The release workflow runs tests, runs `go vet`, builds all release artifacts, and uploads them to the GitHub Release for the tag.
