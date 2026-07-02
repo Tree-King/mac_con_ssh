@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -30,15 +32,71 @@ func Connect(name string, server config.Server) (*ssh.Client, error) {
 		}
 		return answers, nil
 	})
-	cfg := &ssh.ClientConfig{User: server.Username, Auth: []ssh.AuthMethod{ssh.Password(server.Auth.Password), keyboard}, HostKeyCallback: ssh.InsecureIgnoreHostKey(), Timeout: 15 * time.Second}
+	methods, err := authMethods(server, keyboard)
+	if err != nil {
+		return nil, err
+	}
+	cfg := &ssh.ClientConfig{User: server.Username, Auth: methods, HostKeyCallback: ssh.InsecureIgnoreHostKey(), Timeout: 15 * time.Second}
 	addr := net.JoinHostPort(server.Host, fmt.Sprint(server.Port))
 	log.Printf("connecting to SSH server %s as %s", addr, server.Username)
 	client, err := ssh.Dial("tcp", addr, cfg)
 	if err != nil {
-		return nil, fmt.Errorf("ssh authentication/connect failed; check password, TOTP seed, and local/server time: %w", err)
+		return nil, fmt.Errorf("ssh authentication/connect failed; check auth credentials, TOTP seed, and local/server time: %w", err)
 	}
 	log.Printf("SSH connection established for %s", name)
 	return client, nil
+}
+
+func authMethods(server config.Server, keyboard ssh.AuthMethod) ([]ssh.AuthMethod, error) {
+	switch server.Auth.Type {
+	case "password_totp":
+		return []ssh.AuthMethod{ssh.Password(server.Auth.Password), keyboard}, nil
+	case "key_totp":
+		signer, err := privateKeySigner(server.Auth.KeyPath, server.Auth.KeyPassphrase)
+		if err != nil {
+			return nil, err
+		}
+		return []ssh.AuthMethod{ssh.PublicKeys(signer), keyboard}, nil
+	default:
+		return nil, fmt.Errorf("unsupported auth.type %q", server.Auth.Type)
+	}
+}
+
+func privateKeySigner(path, passphrase string) (ssh.Signer, error) {
+	expandedPath, err := expandPath(path)
+	if err != nil {
+		return nil, err
+	}
+	key, err := os.ReadFile(expandedPath)
+	if err != nil {
+		return nil, fmt.Errorf("read private key %s: %w", expandedPath, err)
+	}
+	if passphrase != "" {
+		signer, err := ssh.ParsePrivateKeyWithPassphrase(key, []byte(passphrase))
+		if err != nil {
+			return nil, fmt.Errorf("parse encrypted private key %s: %w", expandedPath, err)
+		}
+		return signer, nil
+	}
+	signer, err := ssh.ParsePrivateKey(key)
+	if err != nil {
+		return nil, fmt.Errorf("parse private key %s: %w", expandedPath, err)
+	}
+	return signer, nil
+}
+
+func expandPath(path string) (string, error) {
+	if path == "~" {
+		return os.UserHomeDir()
+	}
+	if strings.HasPrefix(path, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(home, strings.TrimPrefix(path, "~/")), nil
+	}
+	return path, nil
 }
 
 func StartKeepalive(done <-chan struct{}, client *ssh.Client, interval time.Duration) {
