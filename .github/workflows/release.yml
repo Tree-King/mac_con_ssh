@@ -10,11 +10,10 @@ permissions:
   contents: write
 
 concurrency:
-  group: latest-release
+  group: release
   cancel-in-progress: true
 
 env:
-  RELEASE_TAG: latest
   RELEASE_VERSION: latest
 
 jobs:
@@ -27,60 +26,24 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      - name: Set release tag
+        run: echo "RELEASE_TAG=main-${GITHUB_RUN_NUMBER}-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
       - name: Run tests
         run: GOTOOLCHAIN=local go test ./...
       - name: Run vet
         run: GOTOOLCHAIN=local go vet ./...
       - name: Build release artifacts
         run: make release VERSION=${RELEASE_VERSION}
-      - name: Delete previous latest release
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const tag = process.env.RELEASE_TAG;
-
-            try {
-              const release = await github.rest.repos.getReleaseByTag({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                tag,
-              });
-              await github.rest.repos.deleteRelease({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                release_id: release.data.id,
-              });
-              core.info(`Deleted existing release for ${tag}`);
-            } catch (error) {
-              if (error.status !== 404) {
-                throw error;
-              }
-              core.info(`No existing release found for ${tag}`);
-            }
-
-            try {
-              await github.rest.git.deleteRef({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                ref: `tags/${tag}`,
-              });
-              core.info(`Deleted existing tag ${tag}`);
-            } catch (error) {
-              if (error.status !== 404) {
-                throw error;
-              }
-              core.info(`No existing tag found for ${tag}`);
-            }
-      - name: Upload latest release
+      - name: Upload release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.RELEASE_TAG }}
           target_commitish: ${{ github.sha }}
-          name: Latest main build
+          name: Main build ${{ github.run_number }}
           body: |
             Automated build from `${{ github.sha }}` on `main`.
 
-            This workflow replaces the previous `${{ env.RELEASE_TAG }}` release on every push to `main`.
+            This workflow creates a new release for each run instead of deleting or reusing an older release/tag.
           make_latest: true
           files: |
             dist/*
