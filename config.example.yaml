@@ -1,0 +1,25 @@
+servers:
+  my-server:
+    host: "example.com"
+    port: 22
+    username: "root"
+    auth:
+      type: "password_totp"
+      password: "your-password"
+      totp_seed: "BASE32_TOTP_SECRET"
+    forwards:
+      - name: "local-db"
+        local_host: "127.0.0.1"
+        local_port: 3307
+        remote_host: "127.0.0.1"
+        remote_port: 3306
+    reconnect:
+      enabled: true
+      initial_delay_seconds: 3
+      max_delay_seconds: 60
+      max_retries: 0
+    keepalive:
+      enabled: true
+      interval_seconds: 30
+    log:
+      level: "info"

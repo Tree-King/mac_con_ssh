@@ -1,0 +1,65 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to embed in binaries and use for manual release artifacts (for example v0.1.0-manual)'
+        required: false
+        default: 'manual'
+      create_github_release:
+        description: 'Create or update a GitHub Release when manually dispatched'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Resolve release version
+        id: version
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            version="${GITHUB_REF_NAME}"
+          else
+            version="${{ inputs.version }}"
+            if [[ -z "$version" || "$version" == "manual" ]]; then
+              version="manual-${GITHUB_RUN_NUMBER}-${GITHUB_SHA::7}"
+            fi
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Using release version: $version"
+      - name: Run tests
+        run: GOTOOLCHAIN=local go test ./...
+      - name: Run vet
+        run: GOTOOLCHAIN=local go vet ./...
+      - name: Build release artifacts
+        run: make release VERSION=${{ steps.version.outputs.version }}
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ssh-tunnel-${{ steps.version.outputs.version }}
+          path: dist/*
+          if-no-files-found: error
+      - name: Upload GitHub release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/') || inputs.create_github_release
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: ssh-tunnel ${{ steps.version.outputs.version }}
+          files: |
+            dist/*
