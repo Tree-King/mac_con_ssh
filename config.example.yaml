@@ -23,3 +23,31 @@ servers:
       interval_seconds: 30
     log:
       level: "info"
+
+
+  key-totp-server:
+    host: "example.com"
+    port: 22
+    username: "root"
+    auth:
+      type: "key_totp"
+      key_path: "/home/you/.ssh/id_ed25519"
+      # key_passphrase is optional and only needed for encrypted private keys.
+      key_passphrase: "optional-private-key-passphrase"
+      totp_seed: "BASE32_TOTP_SECRET"
+    forwards:
+      - name: "local-db"
+        local_host: "127.0.0.1"
+        local_port: 3308
+        remote_host: "127.0.0.1"
+        remote_port: 3306
+    reconnect:
+      enabled: true
+      initial_delay_seconds: 3
+      max_delay_seconds: 60
+      max_retries: 0
+    keepalive:
+      enabled: true
+      interval_seconds: 30
+    log:
+      level: "info"

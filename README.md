@@ -25,12 +25,23 @@ Default configuration path:
 
 Use `--config /path/to/config.yaml` to override it. Keep the file private; on Unix-like systems `0600` is recommended and broader permissions produce a warning.
 
-See [`config.example.yaml`](config.example.yaml) for a complete example. Supported v1 authentication is `password_totp`:
+See [`config.example.yaml`](config.example.yaml) for a complete example. Supported v1 authentication modes are `password_totp` and `key_totp`:
 
 ```yaml
 auth:
   type: "password_totp"
   password: "your-password"
+  totp_seed: "BASE32_TOTP_SECRET"
+```
+
+For servers that use public-key authentication before the TOTP prompt, use `key_totp`:
+
+```yaml
+auth:
+  type: "key_totp"
+  key_path: "/home/you/.ssh/id_ed25519"
+  # key_passphrase is optional and only needed for encrypted private keys.
+  key_passphrase: "optional-private-key-passphrase"
   totp_seed: "BASE32_TOTP_SECRET"
 ```
 
@@ -66,6 +77,7 @@ ssh-tunnel version
 
 - SSH connection failure: verify `host`, `port`, firewall rules, and that the server is reachable.
 - Password failure: verify `username` and `auth.password`.
+- Key authentication failure: verify `username`, `auth.key_path`, private key permissions, and `auth.key_passphrase` for encrypted keys.
 - TOTP failure: verify `auth.totp_seed`, local time, server time, and PAM/Google Authenticator settings.
 - Local port in use: change `local_port` or stop the process using it.
 - Remote port unreachable: verify `remote_host` and `remote_port` from the SSH server's network namespace.

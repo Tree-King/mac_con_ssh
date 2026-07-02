@@ -25,9 +25,11 @@ type Server struct {
 	Log       Log       `yaml:"log"`
 }
 type Auth struct {
-	Type     string `yaml:"type"`
-	Password string `yaml:"password"`
-	TOTPSeed string `yaml:"totp_seed"`
+	Type          string `yaml:"type"`
+	Password      string `yaml:"password"`
+	KeyPath       string `yaml:"key_path"`
+	KeyPassphrase string `yaml:"key_passphrase"`
+	TOTPSeed      string `yaml:"totp_seed"`
 }
 type Forward struct {
 	Name       string `yaml:"name"`
@@ -120,11 +122,17 @@ func (s Server) Validate() error {
 	if s.Username == "" {
 		return errors.New("username is required")
 	}
-	if s.Auth.Type != "password_totp" {
-		return errors.New("only auth.type password_totp is supported")
-	}
-	if s.Auth.Password == "" {
-		return errors.New("auth.password is required")
+	switch s.Auth.Type {
+	case "password_totp":
+		if s.Auth.Password == "" {
+			return errors.New("auth.password is required")
+		}
+	case "key_totp":
+		if s.Auth.KeyPath == "" {
+			return errors.New("auth.key_path is required")
+		}
+	default:
+		return errors.New("auth.type must be password_totp or key_totp")
 	}
 	if s.Auth.TOTPSeed == "" {
 		return errors.New("auth.totp_seed is required")
