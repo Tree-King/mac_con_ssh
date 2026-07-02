@@ -13,9 +13,6 @@ concurrency:
   group: release
   cancel-in-progress: true
 
-env:
-  RELEASE_VERSION: latest
-
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -27,13 +24,14 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Set release tag
-        run: echo "RELEASE_TAG=main-${GITHUB_RUN_NUMBER}-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+        run: |
+          echo "RELEASE_TAG=main-${GITHUB_RUN_NUMBER}-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
       - name: Run tests
         run: GOTOOLCHAIN=local go test ./...
       - name: Run vet
         run: GOTOOLCHAIN=local go vet ./...
       - name: Build release artifacts
-        run: make release VERSION=${RELEASE_VERSION}
+        run: make release VERSION=${RELEASE_TAG}
       - name: Upload release
         uses: softprops/action-gh-release@v2
         with:
@@ -42,6 +40,8 @@ jobs:
           name: Main build ${{ github.run_number }}
           body: |
             Automated build from `${{ github.sha }}` on `main`.
+
+            The archive names and `ssh-tunnel version` output use `${{ env.RELEASE_TAG }}` so you can compare a downloaded binary with this release.
 
             This workflow creates a new release for each run instead of deleting or reusing an older release/tag.
           make_latest: true

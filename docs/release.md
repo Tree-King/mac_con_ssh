@@ -42,6 +42,8 @@ Each archive includes the binary, `README.md`, and `config.example.yaml`.
 
 ## GitHub release
 
-The release workflow runs on every push to `main`, including merged pull requests. It runs tests, runs `go vet`, builds all release artifacts, creates a unique release tag for that workflow run, and uploads the artifacts to a new GitHub Release marked as the latest release. The workflow does not delete or reuse older releases or tags.
+The release workflow runs on every push to `main`, including merged pull requests. It runs tests, runs `go vet`, creates a unique release tag in the form `main-<run-number>-<short-sha>`, builds all release artifacts with that exact tag embedded in `ssh-tunnel version`, and uploads the artifacts to a new GitHub Release marked as the latest release. The workflow does not delete or reuse older releases or tags.
+
+GitHub release artifacts should therefore be named like `ssh-tunnel_main-123-51f7c44_linux_amd64.tar.gz`, not `ssh-tunnel_latest_linux_amd64.tar.gz`. If a downloaded binary still reports `latest`, it came from an older workflow run and should be replaced with an artifact whose archive name matches the release tag and commit shown in the release body.
 
 You can also start the same workflow manually from the GitHub Actions `workflow_dispatch` button.

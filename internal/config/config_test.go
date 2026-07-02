@@ -38,3 +38,15 @@ func TestValidateKeyTOTPRequiresKeyPath(t *testing.T) {
 		t.Fatalf("Validate error = %v, want auth.key_path is required", err)
 	}
 }
+
+func TestValidateUnsupportedAuthTypeListsKeyTOTP(t *testing.T) {
+	srv := validServer(Auth{Type: "key-totp", KeyPath: "~/.ssh/id_ed25519", TOTPSeed: "JBSWY3DPEHPK3PXP"})
+	err := srv.Validate()
+	if err == nil {
+		t.Fatal("Validate returned nil error, want unsupported auth.type")
+	}
+	want := "auth.type must be password_totp or key_totp"
+	if err.Error() != want {
+		t.Fatalf("Validate error = %q, want %q", err.Error(), want)
+	}
+}
