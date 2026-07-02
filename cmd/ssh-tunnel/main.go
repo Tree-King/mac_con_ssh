@@ -40,7 +40,7 @@ func run(args []string) error {
 	case "totp":
 		return totpCommand(args[1:])
 	case "version":
-		fmt.Printf("ssh-tunnel %s\n", version)
+		fmt.Printf("ssh-tunnel %s (auth: %s)\n", version, config.SupportedAuthTypesText())
 		return nil
 	case "help", "-h", "--help":
 		usage()
@@ -111,6 +111,7 @@ func runCommand(args []string) error {
 	if err != nil {
 		return err
 	}
+	log.Printf("server %s uses auth.type %s", serverName, server.Auth.Type)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	return runner.Run(ctx, serverName, server)
@@ -133,6 +134,7 @@ func checkCommand(args []string) error {
 	if err != nil {
 		return err
 	}
+	log.Printf("server %s uses auth.type %s", serverName, server.Auth.Type)
 	if err := server.Validate(); err != nil {
 		return err
 	}
