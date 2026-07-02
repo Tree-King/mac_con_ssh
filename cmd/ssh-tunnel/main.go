@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"log"
 	"net"
@@ -52,43 +51,47 @@ func run(args []string) error {
 	}
 }
 
-func commonFlags(name string, args []string) (string, string, error) {
-	fs := flag.NewFlagSet(name, flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
-	cfgPath := fs.String("config", config.DefaultPath(), "configuration file path")
-	serverFlag := fs.String("server", "", "server name")
-	positionals, err := parseInterspersedFlags(fs, args)
-	if err != nil {
-		return "", "", err
-	}
-	server := *serverFlag
-	if server == "" && len(positionals) > 0 {
-		server = positionals[0]
+func commonFlags(_ string, args []string) (string, string, error) {
+	cfgPath := config.DefaultPath()
+	server := ""
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "--":
+			if server == "" && i+1 < len(args) {
+				server = args[i+1]
+			}
+			i = len(args)
+		case arg == "--config" || arg == "-config":
+			if i+1 >= len(args) {
+				return "", "", fmt.Errorf("flag needs an argument: %s", arg)
+			}
+			cfgPath = args[i+1]
+			i++
+		case strings.HasPrefix(arg, "--config="):
+			cfgPath = strings.TrimPrefix(arg, "--config=")
+		case strings.HasPrefix(arg, "-config="):
+			cfgPath = strings.TrimPrefix(arg, "-config=")
+		case arg == "--server" || arg == "-server":
+			if i+1 >= len(args) {
+				return "", "", fmt.Errorf("flag needs an argument: %s", arg)
+			}
+			server = args[i+1]
+			i++
+		case strings.HasPrefix(arg, "--server="):
+			server = strings.TrimPrefix(arg, "--server=")
+		case strings.HasPrefix(arg, "-server="):
+			server = strings.TrimPrefix(arg, "-server=")
+		case strings.HasPrefix(arg, "-") && arg != "-":
+			return "", "", fmt.Errorf("flag provided but not defined: %s", strings.TrimLeft(arg, "-"))
+		case server == "":
+			server = arg
+		}
 	}
 	if server == "" {
 		return "", "", errors.New("missing server name")
 	}
-	return server, *cfgPath, nil
-}
-
-func parseInterspersedFlags(fs *flag.FlagSet, args []string) ([]string, error) {
-	positionals := make([]string, 0, len(args))
-	for len(args) > 0 {
-		if args[0] == "--" {
-			positionals = append(positionals, args[1:]...)
-			break
-		}
-		if strings.HasPrefix(args[0], "-") && args[0] != "-" {
-			if err := fs.Parse(args); err != nil {
-				return nil, err
-			}
-			args = fs.Args()
-			continue
-		}
-		positionals = append(positionals, args[0])
-		args = args[1:]
-	}
-	return positionals, nil
+	return server, cfgPath, nil
 }
 
 func runCommand(args []string) error {
