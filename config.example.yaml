@@ -21,6 +21,15 @@ servers:
         local_port: 3307
         remote_host: "127.0.0.1"
         remote_port: 3306
+        # Optional: provide multiple remote targets for this one local port.
+        # For every new local connection, ssh-tunnel tests the target list over
+        # the SSH connection and forwards to the reachable target with the
+        # lowest connection latency.
+        # remote_targets:
+        #   - host: "db-a.internal.example.com"
+        #     port: 3306
+        #   - host: "db-b.internal.example.com"
+        #     port: 3306
     reconnect:
       enabled: true
       initial_delay_seconds: 3

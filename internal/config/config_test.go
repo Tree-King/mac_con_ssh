@@ -50,6 +50,30 @@ func TestHostCandidatesKeepsHostFirstAndDeduplicates(t *testing.T) {
 	}
 }
 
+func TestForwardRemoteCandidatesSupportsTargets(t *testing.T) {
+	fwd := Forward{
+		RemoteHost: "db-a.example.com",
+		RemotePort: 3306,
+		RemoteTargets: []ForwardTarget{
+			{Host: "db-b.example.com", Port: 3306},
+			{Host: "db-a.example.com", Port: 3306},
+		},
+	}
+	got := fwd.RemoteCandidates()
+	want := []ForwardTarget{
+		{Host: "db-a.example.com", Port: 3306},
+		{Host: "db-b.example.com", Port: 3306},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("RemoteCandidates length = %d, want %d: %v", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("RemoteCandidates[%d] = %#v, want %#v", i, got[i], want[i])
+		}
+	}
+}
+
 func TestValidateAcceptsKeyTOTP(t *testing.T) {
 	srv := validServer(Auth{Type: "key_totp", KeyPath: "~/.ssh/id_ed25519", TOTPSeed: "JBSWY3DPEHPK3PXP"})
 	if err := srv.Validate(); err != nil {

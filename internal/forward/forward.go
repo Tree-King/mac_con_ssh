@@ -6,7 +6,9 @@ import (
 	"io"
 	"log"
 	"net"
+	"strings"
 	"sync"
+	"time"
 
 	"ssh-tunnel/internal/config"
 )
@@ -29,7 +31,7 @@ func (m *Manager) ListenAll() error {
 			m.Close()
 			return fmt.Errorf("listen %s for forward %s: %w", addr, f.Name, err)
 		}
-		log.Printf("local forward %s listening on %s -> %s:%d", f.Name, addr, f.RemoteHost, f.RemotePort)
+		log.Printf("local forward %s listening on %s -> %s", f.Name, addr, formatTargets(f.RemoteCandidates()))
 		m.listeners = append(m.listeners, ln)
 	}
 	return nil
@@ -75,10 +77,9 @@ func (m *Manager) Close() {
 }
 func handle(client dialer, f config.Forward, local net.Conn, errc chan<- error) {
 	defer local.Close()
-	remoteAddr := net.JoinHostPort(f.RemoteHost, fmt.Sprint(f.RemotePort))
-	remote, err := client.Dial("tcp", remoteAddr)
+	remote, remoteAddr, err := dialBestRemote(client, f)
 	if err != nil {
-		err = fmt.Errorf("forward %s failed to connect remote %s: %w", f.Name, remoteAddr, err)
+		err = fmt.Errorf("forward %s failed to connect remote %s: %w", f.Name, formatTargets(f.RemoteCandidates()), err)
 		log.Print(err)
 		select {
 		case errc <- err:
@@ -92,6 +93,58 @@ func handle(client dialer, f config.Forward, local net.Conn, errc chan<- error) 
 	go copyClose(done, remote, local)
 	go copyClose(done, local, remote)
 	<-done
+}
+
+func dialBestRemote(client dialer, f config.Forward) (net.Conn, string, error) {
+	targets := f.RemoteCandidates()
+	if len(targets) == 0 {
+		return nil, "", fmt.Errorf("no remote targets configured")
+	}
+	if len(targets) == 1 {
+		addr := net.JoinHostPort(targets[0].Host, fmt.Sprint(targets[0].Port))
+		conn, err := client.Dial("tcp", addr)
+		return conn, addr, err
+	}
+
+	var best net.Conn
+	bestAddr := ""
+	var bestLatency time.Duration
+	var errs []error
+	for _, target := range targets {
+		addr := net.JoinHostPort(target.Host, fmt.Sprint(target.Port))
+		start := time.Now()
+		conn, err := client.Dial("tcp", addr)
+		latency := time.Since(start)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", addr, err))
+			log.Printf("forward %s remote candidate %s unreachable after %s: %v", f.Name, addr, latency.Round(time.Millisecond), err)
+			continue
+		}
+		log.Printf("forward %s remote candidate %s connected in %s", f.Name, addr, latency.Round(time.Millisecond))
+		if best == nil || latency < bestLatency {
+			if best != nil {
+				_ = best.Close()
+			}
+			best = conn
+			bestAddr = addr
+			bestLatency = latency
+			continue
+		}
+		_ = conn.Close()
+	}
+	if best == nil {
+		return nil, "", fmt.Errorf("all remote targets failed: %v", errs)
+	}
+	log.Printf("forward %s selected remote target %s", f.Name, bestAddr)
+	return best, bestAddr, nil
+}
+
+func formatTargets(targets []config.ForwardTarget) string {
+	addrs := make([]string, 0, len(targets))
+	for _, target := range targets {
+		addrs = append(addrs, net.JoinHostPort(target.Host, fmt.Sprint(target.Port)))
+	}
+	return strings.Join(addrs, ", ")
 }
 func copyClose(done chan<- struct{}, dst net.Conn, src net.Conn) {
 	_, _ = io.Copy(dst, src)

@@ -41,11 +41,16 @@ type Auth struct {
 	TOTPSeed      string `yaml:"totp_seed"`
 }
 type Forward struct {
-	Name       string `yaml:"name"`
-	LocalHost  string `yaml:"local_host"`
-	LocalPort  int    `yaml:"local_port"`
-	RemoteHost string `yaml:"remote_host"`
-	RemotePort int    `yaml:"remote_port"`
+	Name          string          `yaml:"name"`
+	LocalHost     string          `yaml:"local_host"`
+	LocalPort     int             `yaml:"local_port"`
+	RemoteHost    string          `yaml:"remote_host"`
+	RemotePort    int             `yaml:"remote_port"`
+	RemoteTargets []ForwardTarget `yaml:"remote_targets"`
+}
+type ForwardTarget struct {
+	Host string `yaml:"host"`
+	Port int    `yaml:"port"`
 }
 type Reconnect struct {
 	Enabled             bool `yaml:"enabled"`
@@ -113,7 +118,7 @@ func applyDefaults(s *Server) {
 		if s.Forwards[i].LocalHost == "" {
 			s.Forwards[i].LocalHost = "127.0.0.1"
 		}
-		if s.Forwards[i].RemoteHost == "" {
+		if s.Forwards[i].RemoteHost == "" && len(s.Forwards[i].RemoteTargets) == 0 {
 			s.Forwards[i].RemoteHost = "127.0.0.1"
 		}
 		if s.Forwards[i].Name == "" {
@@ -157,11 +162,19 @@ func (s Server) Validate() error {
 	for _, f := range s.Forwards {
 		if net.ParseIP(f.LocalHost) == nil && f.LocalHost != "localhost" { /* hostnames allowed */
 		}
-		if f.LocalPort < 1 || f.LocalPort > 65535 || f.RemotePort < 1 || f.RemotePort > 65535 {
-			return fmt.Errorf("forward %s ports must be 1-65535", f.Name)
+		if f.LocalPort < 1 || f.LocalPort > 65535 {
+			return fmt.Errorf("forward %s local port must be 1-65535", f.Name)
 		}
-		if f.RemoteHost == "" {
-			return fmt.Errorf("forward %s remote_host is required", f.Name)
+		if len(f.RemoteCandidates()) == 0 {
+			return fmt.Errorf("forward %s remote_host/remote_port or remote_targets is required", f.Name)
+		}
+		for _, target := range f.RemoteCandidates() {
+			if strings.TrimSpace(target.Host) == "" {
+				return fmt.Errorf("forward %s remote target host is required", f.Name)
+			}
+			if target.Port < 1 || target.Port > 65535 {
+				return fmt.Errorf("forward %s remote target ports must be 1-65535", f.Name)
+			}
 		}
 	}
 	return nil
@@ -182,6 +195,26 @@ func (s Server) HostCandidates() []string {
 		seen[host] = struct{}{}
 	}
 	return hosts
+}
+
+func (f Forward) RemoteCandidates() []ForwardTarget {
+	seen := make(map[string]struct{}, len(f.RemoteTargets)+1)
+	targets := make([]ForwardTarget, 0, len(f.RemoteTargets)+1)
+	if f.RemoteHost != "" || f.RemotePort != 0 {
+		target := ForwardTarget{Host: f.RemoteHost, Port: f.RemotePort}
+		key := net.JoinHostPort(target.Host, fmt.Sprint(target.Port))
+		targets = append(targets, target)
+		seen[key] = struct{}{}
+	}
+	for _, target := range f.RemoteTargets {
+		key := net.JoinHostPort(target.Host, fmt.Sprint(target.Port))
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		targets = append(targets, target)
+		seen[key] = struct{}{}
+	}
+	return targets
 }
 func checkPerms(path string) []string {
 	if runtime.GOOS == "windows" {
