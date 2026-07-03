@@ -3,10 +3,13 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 DIST_DIR ?= dist
 GO ?= go
 
-.PHONY: build release clean test vet
+.PHONY: build build-gui release clean test vet
 
 build:
 	GOTOOLCHAIN=local $(GO) build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o $(APP_NAME) ./cmd/ssh-tunnel
+
+build-gui:
+	GOTOOLCHAIN=local $(GO) build -tags gui -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o $(APP_NAME) ./cmd/ssh-tunnel
 
 release:
 	VERSION=$(VERSION) DIST_DIR=$(DIST_DIR) ./scripts/release.sh

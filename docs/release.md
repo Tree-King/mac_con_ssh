@@ -10,12 +10,24 @@ make build
 
 The command writes `./ssh-tunnel` or `./ssh-tunnel.exe` depending on the platform.
 
+Build the current platform binary with GUI support included:
+
+```bash
+make build-gui
+```
+
 ## Single target build
 
 Use `scripts/build.sh` for one explicit target:
 
 ```bash
 GOOS_TARGET=linux GOARCH_TARGET=amd64 VERSION=v0.1.0 ./scripts/build.sh
+```
+
+Add `BUILD_TAGS=gui` and an optional suffix when building a GUI-enabled single target:
+
+```bash
+GOOS_TARGET=linux GOARCH_TARGET=amd64 VERSION=v0.1.0 BUILD_TAGS=gui OUTPUT_SUFFIX=_gui ./scripts/build.sh
 ```
 
 The output is written to `dist/` by default.
@@ -36,9 +48,15 @@ Artifacts are written to `dist/`:
 - `ssh-tunnel_<version>_darwin_arm64.tar.gz`
 - `ssh-tunnel_<version>_windows_amd64.zip`
 - `ssh-tunnel_<version>_windows_arm64.zip`
+- `ssh-tunnel_<version>_linux_amd64_gui.tar.gz`
+- `ssh-tunnel_<version>_linux_arm64_gui.tar.gz`
+- `ssh-tunnel_<version>_darwin_amd64_gui.tar.gz`
+- `ssh-tunnel_<version>_darwin_arm64_gui.tar.gz`
+- `ssh-tunnel_<version>_windows_amd64_gui.zip`
+- `ssh-tunnel_<version>_windows_arm64_gui.zip`
 - `SHA256SUMS`
 
-Each archive includes the binary, `README.md`, and `config.example.yaml`.
+Each archive includes the binary, `README.md`, and `config.example.yaml`. The `_gui` archives are built with the `gui` build tag. Override `RELEASE_SPECS` to customize the matrix; each entry uses `GOOS/GOARCH/TAGS/SUFFIX`, with empty `TAGS` and `SUFFIX` for normal CLI builds.
 
 ## GitHub release
 
