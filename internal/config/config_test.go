@@ -25,6 +25,31 @@ func TestValidateAcceptsPasswordTOTP(t *testing.T) {
 	}
 }
 
+func TestValidateAcceptsMultipleHosts(t *testing.T) {
+	srv := validServer(Auth{Type: "password_totp", Password: "secret", TOTPSeed: "JBSWY3DPEHPK3PXP"})
+	srv.Host = ""
+	srv.Hosts = []string{"203.0.113.10", "203.0.113.11"}
+	if err := srv.Validate(); err != nil {
+		t.Fatalf("Validate returned error: %v", err)
+	}
+}
+
+func TestHostCandidatesKeepsHostFirstAndDeduplicates(t *testing.T) {
+	srv := validServer(Auth{Type: "password_totp", Password: "secret", TOTPSeed: "JBSWY3DPEHPK3PXP"})
+	srv.Host = "203.0.113.10"
+	srv.Hosts = []string{"203.0.113.11", "203.0.113.10"}
+	got := srv.HostCandidates()
+	want := []string{"203.0.113.10", "203.0.113.11"}
+	if len(got) != len(want) {
+		t.Fatalf("HostCandidates length = %d, want %d: %v", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("HostCandidates[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
 func TestValidateAcceptsKeyTOTP(t *testing.T) {
 	srv := validServer(Auth{Type: "key_totp", KeyPath: "~/.ssh/id_ed25519", TOTPSeed: "JBSWY3DPEHPK3PXP"})
 	if err := srv.Validate(); err != nil {

@@ -17,6 +17,7 @@ type Config struct {
 }
 type Server struct {
 	Host      string    `yaml:"host"`
+	Hosts     []string  `yaml:"hosts"`
 	Port      int       `yaml:"port"`
 	Username  string    `yaml:"username"`
 	Auth      Auth      `yaml:"auth"`
@@ -121,8 +122,13 @@ func applyDefaults(s *Server) {
 	}
 }
 func (s Server) Validate() error {
-	if s.Host == "" {
-		return errors.New("host is required")
+	if s.Host == "" && len(s.Hosts) == 0 {
+		return errors.New("host or hosts is required")
+	}
+	for _, host := range s.HostCandidates() {
+		if strings.TrimSpace(host) == "" {
+			return errors.New("hosts entries must not be empty")
+		}
 	}
 	if s.Port < 1 || s.Port > 65535 {
 		return errors.New("port must be 1-65535")
@@ -159,6 +165,23 @@ func (s Server) Validate() error {
 		}
 	}
 	return nil
+}
+
+func (s Server) HostCandidates() []string {
+	seen := make(map[string]struct{}, len(s.Hosts)+1)
+	hosts := make([]string, 0, len(s.Hosts)+1)
+	if s.Host != "" {
+		hosts = append(hosts, s.Host)
+		seen[s.Host] = struct{}{}
+	}
+	for _, host := range s.Hosts {
+		if _, ok := seen[host]; ok {
+			continue
+		}
+		hosts = append(hosts, host)
+		seen[host] = struct{}{}
+	}
+	return hosts
 }
 func checkPerms(path string) []string {
 	if runtime.GOOS == "windows" {

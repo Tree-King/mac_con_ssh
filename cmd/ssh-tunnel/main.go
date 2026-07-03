@@ -10,10 +10,10 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
-	"time"
 
 	"ssh-tunnel/internal/config"
 	"ssh-tunnel/internal/runner"
+	"ssh-tunnel/internal/sshclient"
 	"ssh-tunnel/internal/totp"
 )
 
@@ -149,11 +149,11 @@ func checkCommand(args []string) error {
 		}
 		_ = ln.Close()
 	}
-	conn, err := net.DialTimeout("tcp", net.JoinHostPort(server.Host, fmt.Sprint(server.Port)), 5*time.Second)
+	host, probes, err := sshclient.SelectBestEndpoint(server)
+	sshclient.LogEndpointSelection(serverName, host, probes)
 	if err != nil {
 		return fmt.Errorf("ssh endpoint is not reachable: %w", err)
 	}
-	_ = conn.Close()
 	log.Printf("configuration check passed for %s", serverName)
 	return nil
 }

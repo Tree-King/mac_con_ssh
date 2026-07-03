@@ -16,6 +16,12 @@ import (
 )
 
 func Connect(name string, server config.Server) (*ssh.Client, error) {
+	host, probes, err := SelectBestEndpoint(server)
+	if err != nil {
+		LogEndpointSelection(name, "", probes)
+		return nil, err
+	}
+	LogEndpointSelection(name, host, probes)
 	keyboard := ssh.KeyboardInteractive(func(user, instruction string, questions []string, echos []bool) ([]string, error) {
 		answers := make([]string, len(questions))
 		for i, q := range questions {
@@ -37,7 +43,7 @@ func Connect(name string, server config.Server) (*ssh.Client, error) {
 		return nil, err
 	}
 	cfg := &ssh.ClientConfig{User: server.Username, Auth: methods, HostKeyCallback: ssh.InsecureIgnoreHostKey(), Timeout: 15 * time.Second}
-	addr := net.JoinHostPort(server.Host, fmt.Sprint(server.Port))
+	addr := net.JoinHostPort(host, fmt.Sprint(server.Port))
 	log.Printf("connecting to SSH server %s as %s", addr, server.Username)
 	client, err := ssh.Dial("tcp", addr, cfg)
 	if err != nil {
