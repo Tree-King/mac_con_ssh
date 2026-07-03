@@ -84,6 +84,24 @@ auth:
 
 Passwords, seeds, and generated TOTP codes are never written to logs.
 
+## Native desktop GUI
+
+Build a native, non-web desktop control panel with the `gui` build tag:
+
+```bash
+go build -tags gui -o ssh-tunnel ./cmd/ssh-tunnel
+ssh-tunnel gui --config ./config.yaml
+```
+
+The GUI is implemented with Fyne and runs on Linux, macOS, and Windows. It provides:
+
+- an editable YAML configuration pane with save and reload actions;
+- a connection list with running/stopped indicators;
+- start and stop controls for the selected tunnel/service;
+- visual checks for local listen ports, SSH host candidates, direct forwarding targets, and the currently selected lowest-latency SSH endpoint.
+
+Default CLI builds do not include GUI dependencies. Running `ssh-tunnel gui` from a normal build prints rebuild instructions; use `-tags gui` when packaging the desktop application. Linux GUI builds require standard OpenGL/X11 development packages for Fyne.
+
 ## Usage
 
 Start one or more tunnels/services in a single process:
