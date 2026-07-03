@@ -86,10 +86,11 @@ Passwords, seeds, and generated TOTP codes are never written to logs.
 
 ## Usage
 
-Start a tunnel:
+Start one or more tunnels/services in a single process:
 
 ```bash
 ssh-tunnel run my-server --config ./config.yaml
+ssh-tunnel run ssh-service tcp-service --config ./config.yaml
 ```
 
 Check config, local port availability, TOTP seed validity, and SSH TCP reachability:

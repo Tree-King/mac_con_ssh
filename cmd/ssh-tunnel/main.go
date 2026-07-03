@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 
 	"ssh-tunnel/internal/config"
@@ -94,31 +95,112 @@ func commonFlags(_ string, args []string) (string, string, error) {
 	return server, cfgPath, nil
 }
 
+type runFlags struct {
+	servers []string
+	cfgPath string
+}
+
+func commonRunFlags(args []string) (runFlags, error) {
+	flags := runFlags{cfgPath: config.DefaultPath()}
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "--":
+			flags.servers = append(flags.servers, args[i+1:]...)
+			i = len(args)
+		case arg == "--config" || arg == "-config":
+			if i+1 >= len(args) {
+				return runFlags{}, fmt.Errorf("flag needs an argument: %s", arg)
+			}
+			flags.cfgPath = args[i+1]
+			i++
+		case strings.HasPrefix(arg, "--config="):
+			flags.cfgPath = strings.TrimPrefix(arg, "--config=")
+		case strings.HasPrefix(arg, "-config="):
+			flags.cfgPath = strings.TrimPrefix(arg, "-config=")
+		case arg == "--server" || arg == "-server":
+			if i+1 >= len(args) {
+				return runFlags{}, fmt.Errorf("flag needs an argument: %s", arg)
+			}
+			flags.servers = append(flags.servers, args[i+1])
+			i++
+		case strings.HasPrefix(arg, "--server="):
+			flags.servers = append(flags.servers, strings.TrimPrefix(arg, "--server="))
+		case strings.HasPrefix(arg, "-server="):
+			flags.servers = append(flags.servers, strings.TrimPrefix(arg, "-server="))
+		case strings.HasPrefix(arg, "-") && arg != "-":
+			return runFlags{}, fmt.Errorf("flag provided but not defined: %s", strings.TrimLeft(arg, "-"))
+		default:
+			flags.servers = append(flags.servers, arg)
+		}
+	}
+	if len(flags.servers) == 0 {
+		return runFlags{}, errors.New("missing server name")
+	}
+	return flags, nil
+}
+
 func runCommand(args []string) error {
-	serverName, cfgPath, err := commonFlags("run", args)
+	flags, err := commonRunFlags(args)
 	if err != nil {
 		return err
 	}
-	log.Printf("reading configuration from %s", cfgPath)
-	cfg, warnings, err := config.Load(cfgPath)
+	log.Printf("reading configuration from %s", flags.cfgPath)
+	cfg, warnings, err := config.Load(flags.cfgPath)
 	if err != nil {
 		return err
 	}
 	for _, warning := range warnings {
 		log.Printf("warning: %s", warning)
 	}
-	server, err := cfg.Server(serverName)
-	if err != nil {
-		return err
-	}
-	if server.Direct {
-		log.Printf("server %s uses direct TCP forwarding", serverName)
-	} else {
-		log.Printf("server %s uses auth.type %s", serverName, server.Auth.Type)
+	servers := make(map[string]config.Server, len(flags.servers))
+	for _, serverName := range flags.servers {
+		server, err := cfg.Server(serverName)
+		if err != nil {
+			return err
+		}
+		servers[serverName] = server
+		logServerMode(serverName, server)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	return runner.Run(ctx, serverName, server)
+	return runServers(ctx, servers)
+}
+
+func logServerMode(serverName string, server config.Server) {
+	if server.Direct {
+		log.Printf("server %s uses direct TCP forwarding", serverName)
+		return
+	}
+	log.Printf("server %s uses auth.type %s", serverName, server.Auth.Type)
+}
+
+func runServers(ctx context.Context, servers map[string]config.Server) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	errc := make(chan error, len(servers))
+	var wg sync.WaitGroup
+	for serverName, server := range servers {
+		serverName, server := serverName, server
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := runner.Run(ctx, serverName, server); err != nil && ctx.Err() == nil {
+				errc <- fmt.Errorf("server %s: %w", serverName, err)
+				cancel()
+			}
+		}()
+	}
+	go func() {
+		wg.Wait()
+		close(errc)
+	}()
+	for err := range errc {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func checkCommand(args []string) error {
@@ -193,8 +275,8 @@ func totpCommand(args []string) error {
 
 func usage() {
 	fmt.Fprintln(os.Stderr, strings.TrimSpace(`Usage:
-  ssh-tunnel run SERVER [--config PATH]
-  ssh-tunnel run --server SERVER [--config PATH]
+  ssh-tunnel run SERVER [SERVER ...] [--config PATH]
+  ssh-tunnel run --server SERVER [--server SERVER ...] [--config PATH]
   ssh-tunnel check SERVER [--config PATH]
   ssh-tunnel totp SERVER [--config PATH]
   ssh-tunnel version`))
