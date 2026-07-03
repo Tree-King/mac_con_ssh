@@ -50,27 +50,44 @@ func TestHostCandidatesKeepsHostFirstAndDeduplicates(t *testing.T) {
 	}
 }
 
-func TestForwardRemoteCandidatesSupportsTargets(t *testing.T) {
+func TestForwardDirectCandidatesSupportsTargets(t *testing.T) {
 	fwd := Forward{
-		RemoteHost: "db-a.example.com",
-		RemotePort: 3306,
-		RemoteTargets: []ForwardTarget{
+		DirectTargets: []ForwardTarget{
+			{Host: "db-a.example.com", Port: 3306},
 			{Host: "db-b.example.com", Port: 3306},
 			{Host: "db-a.example.com", Port: 3306},
 		},
 	}
-	got := fwd.RemoteCandidates()
+	got := fwd.DirectCandidates()
 	want := []ForwardTarget{
 		{Host: "db-a.example.com", Port: 3306},
 		{Host: "db-b.example.com", Port: 3306},
 	}
 	if len(got) != len(want) {
-		t.Fatalf("RemoteCandidates length = %d, want %d: %v", len(got), len(want), got)
+		t.Fatalf("DirectCandidates length = %d, want %d: %v", len(got), len(want), got)
 	}
 	for i := range want {
 		if got[i] != want[i] {
-			t.Fatalf("RemoteCandidates[%d] = %#v, want %#v", i, got[i], want[i])
+			t.Fatalf("DirectCandidates[%d] = %#v, want %#v", i, got[i], want[i])
 		}
+	}
+}
+
+func TestValidateAcceptsDirectForwardWithoutSSHAuth(t *testing.T) {
+	srv := Server{
+		Direct: true,
+		Forwards: []Forward{{
+			Name:      "db",
+			LocalHost: "127.0.0.1",
+			LocalPort: 3307,
+			DirectTargets: []ForwardTarget{
+				{Host: "db-a.example.com", Port: 3306},
+				{Host: "db-b.example.com", Port: 3306},
+			},
+		}},
+	}
+	if err := srv.Validate(); err != nil {
+		t.Fatalf("Validate returned error: %v", err)
 	}
 }
 

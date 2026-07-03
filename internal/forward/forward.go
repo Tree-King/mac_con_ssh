@@ -31,7 +31,7 @@ func (m *Manager) ListenAll() error {
 			m.Close()
 			return fmt.Errorf("listen %s for forward %s: %w", addr, f.Name, err)
 		}
-		log.Printf("local forward %s listening on %s -> %s", f.Name, addr, formatTargets(f.RemoteCandidates()))
+		log.Printf("local forward %s listening on %s -> %s", f.Name, addr, formatForwardDestination(f))
 		m.listeners = append(m.listeners, ln)
 	}
 	return nil
@@ -77,9 +77,9 @@ func (m *Manager) Close() {
 }
 func handle(client dialer, f config.Forward, local net.Conn, errc chan<- error) {
 	defer local.Close()
-	remote, remoteAddr, err := dialBestRemote(client, f)
+	remote, remoteAddr, err := dialForwardTarget(client, f)
 	if err != nil {
-		err = fmt.Errorf("forward %s failed to connect remote %s: %w", f.Name, formatTargets(f.RemoteCandidates()), err)
+		err = fmt.Errorf("forward %s failed to connect target %s: %w", f.Name, formatForwardDestination(f), err)
 		log.Print(err)
 		select {
 		case errc <- err:
@@ -88,21 +88,31 @@ func handle(client dialer, f config.Forward, local net.Conn, errc chan<- error) 
 		return
 	}
 	defer remote.Close()
-	log.Printf("forward %s established local %s -> remote %s", f.Name, local.RemoteAddr(), remoteAddr)
+	log.Printf("forward %s established local %s -> target %s", f.Name, local.RemoteAddr(), remoteAddr)
 	done := make(chan struct{}, 2)
 	go copyClose(done, remote, local)
 	go copyClose(done, local, remote)
 	<-done
 }
 
-func dialBestRemote(client dialer, f config.Forward) (net.Conn, string, error) {
-	targets := f.RemoteCandidates()
-	if len(targets) == 0 {
-		return nil, "", fmt.Errorf("no remote targets configured")
+func dialForwardTarget(client dialer, f config.Forward) (net.Conn, string, error) {
+	if len(f.DirectTargets) > 0 {
+		return dialBestDirect(f)
 	}
+	addr := net.JoinHostPort(f.RemoteHost, fmt.Sprint(f.RemotePort))
+	conn, err := client.Dial("tcp", addr)
+	return conn, addr, err
+}
+
+func dialBestDirect(f config.Forward) (net.Conn, string, error) {
+	targets := f.DirectCandidates()
+	if len(targets) == 0 {
+		return nil, "", fmt.Errorf("no direct targets configured")
+	}
+	dialer := &net.Dialer{}
 	if len(targets) == 1 {
 		addr := net.JoinHostPort(targets[0].Host, fmt.Sprint(targets[0].Port))
-		conn, err := client.Dial("tcp", addr)
+		conn, err := dialer.Dial("tcp", addr)
 		return conn, addr, err
 	}
 
@@ -113,14 +123,14 @@ func dialBestRemote(client dialer, f config.Forward) (net.Conn, string, error) {
 	for _, target := range targets {
 		addr := net.JoinHostPort(target.Host, fmt.Sprint(target.Port))
 		start := time.Now()
-		conn, err := client.Dial("tcp", addr)
+		conn, err := dialer.Dial("tcp", addr)
 		latency := time.Since(start)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", addr, err))
-			log.Printf("forward %s remote candidate %s unreachable after %s: %v", f.Name, addr, latency.Round(time.Millisecond), err)
+			log.Printf("forward %s direct candidate %s unreachable after %s: %v", f.Name, addr, latency.Round(time.Millisecond), err)
 			continue
 		}
-		log.Printf("forward %s remote candidate %s connected in %s", f.Name, addr, latency.Round(time.Millisecond))
+		log.Printf("forward %s direct candidate %s connected in %s", f.Name, addr, latency.Round(time.Millisecond))
 		if best == nil || latency < bestLatency {
 			if best != nil {
 				_ = best.Close()
@@ -133,10 +143,17 @@ func dialBestRemote(client dialer, f config.Forward) (net.Conn, string, error) {
 		_ = conn.Close()
 	}
 	if best == nil {
-		return nil, "", fmt.Errorf("all remote targets failed: %v", errs)
+		return nil, "", fmt.Errorf("all direct targets failed: %v", errs)
 	}
-	log.Printf("forward %s selected remote target %s", f.Name, bestAddr)
+	log.Printf("forward %s selected direct target %s", f.Name, bestAddr)
 	return best, bestAddr, nil
+}
+
+func formatForwardDestination(f config.Forward) string {
+	if len(f.DirectTargets) > 0 {
+		return formatTargets(f.DirectCandidates())
+	}
+	return net.JoinHostPort(f.RemoteHost, fmt.Sprint(f.RemotePort))
 }
 
 func formatTargets(targets []config.ForwardTarget) string {

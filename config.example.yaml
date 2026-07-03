@@ -21,15 +21,6 @@ servers:
         local_port: 3307
         remote_host: "127.0.0.1"
         remote_port: 3306
-        # Optional: provide multiple remote targets for this one local port.
-        # For every new local connection, ssh-tunnel tests the target list over
-        # the SSH connection and forwards to the reachable target with the
-        # lowest connection latency.
-        # remote_targets:
-        #   - host: "db-a.internal.example.com"
-        #     port: 3306
-        #   - host: "db-b.internal.example.com"
-        #     port: 3306
     reconnect:
       enabled: true
       initial_delay_seconds: 3
@@ -41,6 +32,22 @@ servers:
     log:
       level: "info"
 
+  direct-db:
+    # Direct mode is for ordinary TCP targets. It does not connect to SSH and
+    # does not require SSH auth fields.
+    direct: true
+    forwards:
+      - name: "local-db"
+        local_host: "127.0.0.1"
+        local_port: 3307
+        # For every new local connection, ssh-tunnel tests this target list
+        # directly from the local machine and forwards to the reachable target
+        # with the lowest connection latency.
+        direct_targets:
+          - host: "db-a.internal.example.com"
+            port: 3306
+          - host: "db-b.internal.example.com"
+            port: 3306
 
   key-totp-server:
     host: "example.com"

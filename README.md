@@ -41,23 +41,27 @@ hosts:
   - "203.0.113.10"
 ```
 
-Local forwards can also balance one local port across multiple remote
+Local forwards can also balance one local port across multiple ordinary TCP
 `host:port` targets. For every new local connection, `ssh-tunnel` dials each
-remote target through the SSH connection and uses the reachable target with the
-lowest connection latency:
+direct target from the local machine and uses the reachable target with the
+lowest connection latency. Set `direct: true` for this mode; it does not
+connect to SSH and does not require SSH auth fields:
 
 ```yaml
-forwards:
-  - name: "local-db"
-    local_host: "127.0.0.1"
-    local_port: 3307
-    remote_targets:
-      - host: "db-a.internal.example.com"
-        port: 3306
-      - host: "db-b.internal.example.com"
-        port: 3306
-      - host: "10.0.0.10"
-        port: 3306
+servers:
+  direct-db:
+    direct: true
+    forwards:
+      - name: "local-db"
+        local_host: "127.0.0.1"
+        local_port: 3307
+        direct_targets:
+          - host: "db-a.internal.example.com"
+            port: 3306
+          - host: "db-b.internal.example.com"
+            port: 3306
+          - host: "10.0.0.10"
+            port: 3306
 ```
 
 ```yaml
