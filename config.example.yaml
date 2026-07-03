@@ -1,12 +1,14 @@
 servers:
   my-server:
     host: "example.com"
-    # Optional: configure multiple IPs for the same server. When more than one
-    # candidate is configured, ssh-tunnel probes them and uses the reachable IP
-    # with the lowest TCP latency, which helps pick the best China Unicom path.
+    # Optional: configure multiple addresses for the same server. Entries can
+    # be IP addresses or DNS names. When more than one candidate is configured,
+    # ssh-tunnel probes them and uses the reachable address with the lowest TCP
+    # latency, which helps pick the best China Unicom path.
     # hosts:
+    #   - "server-cu-a.example.com"
+    #   - "server-cu-b.example.com"
     #   - "203.0.113.10"
-    #   - "203.0.113.11"
     port: 22
     username: "root"
     auth:

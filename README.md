@@ -27,16 +27,18 @@ Use `--config /path/to/config.yaml` to override it. Keep the file private; on Un
 
 See [`config.example.yaml`](config.example.yaml) for a complete example. Supported v1 authentication modes are `password_totp` and `key_totp`:
 
-If the same server has multiple IP addresses, configure them with `hosts`.
-When multiple candidates are present, `ssh-tunnel` probes the SSH TCP port for
-each IP and automatically connects to the reachable IP with the lowest latency,
-which is useful for choosing the best China Unicom route:
+If the same server has multiple addresses, configure them with `hosts`.
+Each entry can be either an IP address or a DNS name. When multiple candidates
+are present, `ssh-tunnel` probes the SSH TCP port for each address and
+automatically connects to the reachable address with the lowest latency, which
+is useful for choosing the best China Unicom route:
 
 ```yaml
-host: "203.0.113.10"
+host: "server-cu-a.example.com"
 hosts:
+  - "server-cu-a.example.com"
+  - "server-cu-b.example.com"
   - "203.0.113.10"
-  - "203.0.113.11"
 ```
 
 ```yaml
