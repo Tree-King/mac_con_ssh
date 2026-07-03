@@ -8,10 +8,12 @@ import (
 	"net"
 	"sync"
 
-	"golang.org/x/crypto/ssh"
-
 	"ssh-tunnel/internal/config"
 )
+
+type dialer interface {
+	Dial(network, addr string) (net.Conn, error)
+}
 
 type Manager struct {
 	Forwards  []config.Forward
@@ -32,9 +34,9 @@ func (m *Manager) ListenAll() error {
 	}
 	return nil
 }
-func (m *Manager) Serve(ctx context.Context, client *ssh.Client) error {
+func (m *Manager) Serve(ctx context.Context, client dialer) error {
 	var wg sync.WaitGroup
-	errc := make(chan error, len(m.listeners))
+	errc := make(chan error, len(m.listeners)+1)
 	for i, ln := range m.listeners {
 		f := m.Forwards[i]
 		wg.Add(1)
@@ -51,7 +53,7 @@ func (m *Manager) Serve(ctx context.Context, client *ssh.Client) error {
 						return
 					}
 				}
-				go handle(client, f, conn)
+				go handle(client, f, conn, errc)
 			}
 		}()
 	}
@@ -71,12 +73,17 @@ func (m *Manager) Close() {
 		_ = ln.Close()
 	}
 }
-func handle(client *ssh.Client, f config.Forward, local net.Conn) {
+func handle(client dialer, f config.Forward, local net.Conn, errc chan<- error) {
 	defer local.Close()
 	remoteAddr := net.JoinHostPort(f.RemoteHost, fmt.Sprint(f.RemotePort))
 	remote, err := client.Dial("tcp", remoteAddr)
 	if err != nil {
-		log.Printf("forward %s failed to connect remote %s: %v", f.Name, remoteAddr, err)
+		err = fmt.Errorf("forward %s failed to connect remote %s: %w", f.Name, remoteAddr, err)
+		log.Print(err)
+		select {
+		case errc <- err:
+		default:
+		}
 		return
 	}
 	defer remote.Close()
