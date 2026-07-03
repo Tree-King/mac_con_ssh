@@ -1,6 +1,14 @@
 servers:
   my-server:
     host: "example.com"
+    # Optional: configure multiple addresses for the same server. Entries can
+    # be IP addresses or DNS names. When more than one candidate is configured,
+    # ssh-tunnel probes them and uses the reachable address with the lowest TCP
+    # latency, which helps pick the best China Unicom path.
+    # hosts:
+    #   - "server-cu-a.example.com"
+    #   - "server-cu-b.example.com"
+    #   - "203.0.113.10"
     port: 22
     username: "root"
     auth:
@@ -24,6 +32,22 @@ servers:
     log:
       level: "info"
 
+  direct-db:
+    # Direct mode is for ordinary TCP targets. It does not connect to SSH and
+    # does not require SSH auth fields.
+    direct: true
+    forwards:
+      - name: "local-db"
+        local_host: "127.0.0.1"
+        local_port: 3307
+        # For every new local connection, ssh-tunnel tests this target list
+        # directly from the local machine and forwards to the reachable target
+        # with the lowest connection latency.
+        direct_targets:
+          - host: "db-a.internal.example.com"
+            port: 3306
+          - host: "db-b.internal.example.com"
+            port: 3306
 
   key-totp-server:
     host: "example.com"

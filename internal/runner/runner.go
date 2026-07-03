@@ -2,7 +2,9 @@ package runner
 
 import (
 	"context"
+	"errors"
 	"log"
+	"net"
 	"time"
 
 	"ssh-tunnel/internal/config"
@@ -11,6 +13,9 @@ import (
 )
 
 func Run(ctx context.Context, name string, server config.Server) error {
+	if server.Direct {
+		return runDirect(ctx, server)
+	}
 	attempt := 0
 	delay := time.Duration(server.Reconnect.InitialDelaySeconds) * time.Second
 	maxDelay := time.Duration(server.Reconnect.MaxDelaySeconds) * time.Second
@@ -59,6 +64,21 @@ func Run(ctx context.Context, name string, server config.Server) error {
 		}
 		delay = nextDelay(delay, maxDelay)
 	}
+}
+
+type disabledDialer struct{}
+
+func (disabledDialer) Dial(string, string) (net.Conn, error) {
+	return nil, errors.New("SSH dialer is unavailable for direct forwarding")
+}
+
+func runDirect(ctx context.Context, server config.Server) error {
+	mgr := forward.New(server.Forwards)
+	if err := mgr.ListenAll(); err != nil {
+		return err
+	}
+	defer mgr.Close()
+	return mgr.Serve(ctx, disabledDialer{})
 }
 func nextDelay(current, max time.Duration) time.Duration {
 	current *= 2

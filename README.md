@@ -27,6 +27,43 @@ Use `--config /path/to/config.yaml` to override it. Keep the file private; on Un
 
 See [`config.example.yaml`](config.example.yaml) for a complete example. Supported v1 authentication modes are `password_totp` and `key_totp`:
 
+If the same server has multiple addresses, configure them with `hosts`.
+Each entry can be either an IP address or a DNS name. When multiple candidates
+are present, `ssh-tunnel` probes the SSH TCP port for each address and
+automatically connects to the reachable address with the lowest latency, which
+is useful for choosing the best China Unicom route:
+
+```yaml
+host: "server-cu-a.example.com"
+hosts:
+  - "server-cu-a.example.com"
+  - "server-cu-b.example.com"
+  - "203.0.113.10"
+```
+
+Local forwards can also balance one local port across multiple ordinary TCP
+`host:port` targets. For every new local connection, `ssh-tunnel` dials each
+direct target from the local machine and uses the reachable target with the
+lowest connection latency. Set `direct: true` for this mode; it does not
+connect to SSH and does not require SSH auth fields:
+
+```yaml
+servers:
+  direct-db:
+    direct: true
+    forwards:
+      - name: "local-db"
+        local_host: "127.0.0.1"
+        local_port: 3307
+        direct_targets:
+          - host: "db-a.internal.example.com"
+            port: 3306
+          - host: "db-b.internal.example.com"
+            port: 3306
+          - host: "10.0.0.10"
+            port: 3306
+```
+
 ```yaml
 auth:
   type: "password_totp"

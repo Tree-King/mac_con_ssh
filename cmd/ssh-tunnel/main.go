@@ -10,10 +10,10 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
-	"time"
 
 	"ssh-tunnel/internal/config"
 	"ssh-tunnel/internal/runner"
+	"ssh-tunnel/internal/sshclient"
 	"ssh-tunnel/internal/totp"
 )
 
@@ -111,7 +111,11 @@ func runCommand(args []string) error {
 	if err != nil {
 		return err
 	}
-	log.Printf("server %s uses auth.type %s", serverName, server.Auth.Type)
+	if server.Direct {
+		log.Printf("server %s uses direct TCP forwarding", serverName)
+	} else {
+		log.Printf("server %s uses auth.type %s", serverName, server.Auth.Type)
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	return runner.Run(ctx, serverName, server)
@@ -134,12 +138,18 @@ func checkCommand(args []string) error {
 	if err != nil {
 		return err
 	}
-	log.Printf("server %s uses auth.type %s", serverName, server.Auth.Type)
+	if server.Direct {
+		log.Printf("server %s uses direct TCP forwarding", serverName)
+	} else {
+		log.Printf("server %s uses auth.type %s", serverName, server.Auth.Type)
+	}
 	if err := server.Validate(); err != nil {
 		return err
 	}
-	if _, err := totp.Generate(server.Auth.TOTPSeed); err != nil {
-		return fmt.Errorf("totp seed is invalid: %w", err)
+	if !server.Direct {
+		if _, err := totp.Generate(server.Auth.TOTPSeed); err != nil {
+			return fmt.Errorf("totp seed is invalid: %w", err)
+		}
 	}
 	for _, fwd := range server.Forwards {
 		addr := net.JoinHostPort(fwd.LocalHost, fmt.Sprint(fwd.LocalPort))
@@ -149,11 +159,13 @@ func checkCommand(args []string) error {
 		}
 		_ = ln.Close()
 	}
-	conn, err := net.DialTimeout("tcp", net.JoinHostPort(server.Host, fmt.Sprint(server.Port)), 5*time.Second)
-	if err != nil {
-		return fmt.Errorf("ssh endpoint is not reachable: %w", err)
+	if !server.Direct {
+		host, probes, err := sshclient.SelectBestEndpoint(server)
+		sshclient.LogEndpointSelection(serverName, host, probes)
+		if err != nil {
+			return fmt.Errorf("ssh endpoint is not reachable: %w", err)
+		}
 	}
-	_ = conn.Close()
 	log.Printf("configuration check passed for %s", serverName)
 	return nil
 }
