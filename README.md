@@ -84,6 +84,24 @@ auth:
 
 Passwords, seeds, and generated TOTP codes are never written to logs.
 
+## Non-web GUI
+
+Build a cross-platform, non-web control panel with the `gui` build tag:
+
+```bash
+go build -tags gui -o ssh-tunnel ./cmd/ssh-tunnel
+ssh-tunnel gui --config ./config.yaml
+```
+
+The GUI is implemented as a pure-Go terminal GUI using tview/tcell, so it runs on Linux, macOS, and Windows without browser, OpenGL, or X11 development dependencies. It provides:
+
+- an editable YAML configuration pane with save and reload actions;
+- a connection list with running/stopped indicators;
+- start and stop controls for the selected tunnel/service;
+- visual checks for local listen ports, SSH host candidates, direct forwarding targets, and the currently selected lowest-latency SSH endpoint.
+
+Default CLI builds do not include GUI dependencies. Running `ssh-tunnel gui` from a normal build prints rebuild instructions; use `-tags gui` when packaging the control panel.
+
 ## Usage
 
 Start one or more tunnels/services in a single process:

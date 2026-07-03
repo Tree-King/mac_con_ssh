@@ -13,6 +13,7 @@ import (
 	"syscall"
 
 	"ssh-tunnel/internal/config"
+	"ssh-tunnel/internal/gui"
 	"ssh-tunnel/internal/runner"
 	"ssh-tunnel/internal/sshclient"
 	"ssh-tunnel/internal/totp"
@@ -40,6 +41,8 @@ func run(args []string) error {
 		return checkCommand(args[1:])
 	case "totp":
 		return totpCommand(args[1:])
+	case "gui":
+		return guiCommand(args[1:])
 	case "version":
 		fmt.Printf("ssh-tunnel %s (auth: %s)\n", version, config.SupportedAuthTypesText())
 		return nil
@@ -273,11 +276,36 @@ func totpCommand(args []string) error {
 	return nil
 }
 
+func guiCommand(args []string) error {
+	cfgPath := config.DefaultPath()
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "--config" || arg == "-config":
+			if i+1 >= len(args) {
+				return fmt.Errorf("flag needs an argument: %s", arg)
+			}
+			cfgPath = args[i+1]
+			i++
+		case strings.HasPrefix(arg, "--config="):
+			cfgPath = strings.TrimPrefix(arg, "--config=")
+		case strings.HasPrefix(arg, "-config="):
+			cfgPath = strings.TrimPrefix(arg, "-config=")
+		case strings.HasPrefix(arg, "-") && arg != "-":
+			return fmt.Errorf("flag provided but not defined: %s", strings.TrimLeft(arg, "-"))
+		default:
+			cfgPath = arg
+		}
+	}
+	return gui.Run(cfgPath)
+}
+
 func usage() {
 	fmt.Fprintln(os.Stderr, strings.TrimSpace(`Usage:
   ssh-tunnel run SERVER [SERVER ...] [--config PATH]
   ssh-tunnel run --server SERVER [--server SERVER ...] [--config PATH]
   ssh-tunnel check SERVER [--config PATH]
   ssh-tunnel totp SERVER [--config PATH]
+  ssh-tunnel gui [--config PATH]
   ssh-tunnel version`))
 }
