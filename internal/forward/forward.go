@@ -8,6 +8,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"ssh-tunnel/internal/config"
@@ -33,12 +34,28 @@ func (e *TargetDialError) Error() string {
 
 func (e *TargetDialError) Unwrap() error { return e.Err }
 
+type Stats struct {
+	UploadBytes   atomic.Uint64
+	DownloadBytes atomic.Uint64
+}
+
+func (s *Stats) Snapshot() (upload, download uint64) {
+	if s == nil {
+		return 0, 0
+	}
+	return s.UploadBytes.Load(), s.DownloadBytes.Load()
+}
+
 type Manager struct {
 	Forwards  []config.Forward
 	listeners []net.Listener
+	stats     *Stats
 }
 
-func New(forwards []config.Forward) *Manager { return &Manager{Forwards: forwards} }
+func New(forwards []config.Forward) *Manager { return NewWithStats(forwards, nil) }
+func NewWithStats(forwards []config.Forward, stats *Stats) *Manager {
+	return &Manager{Forwards: forwards, stats: stats}
+}
 func (m *Manager) ListenAll() error {
 	for _, f := range m.Forwards {
 		addr := net.JoinHostPort(f.LocalHost, fmt.Sprint(f.LocalPort))
@@ -71,7 +88,7 @@ func (m *Manager) Serve(ctx context.Context, client dialer) error {
 						return
 					}
 				}
-				go handle(client, f, conn, errc)
+				go handle(client, f, conn, errc, m.stats)
 			}
 		}()
 	}
@@ -91,7 +108,11 @@ func (m *Manager) Close() {
 		_ = ln.Close()
 	}
 }
-func handle(client dialer, f config.Forward, local net.Conn, errc chan<- error) {
+func handle(client dialer, f config.Forward, local net.Conn, errc chan<- error, statArgs ...*Stats) {
+	var stats *Stats
+	if len(statArgs) > 0 {
+		stats = statArgs[0]
+	}
 	defer local.Close()
 	remote, remoteAddr, err := dialForwardTarget(client, f)
 	if err != nil {
@@ -106,8 +127,16 @@ func handle(client dialer, f config.Forward, local net.Conn, errc chan<- error) 
 	defer remote.Close()
 	log.Printf("forward %s established local %s -> target %s", f.Name, local.RemoteAddr(), remoteAddr)
 	done := make(chan struct{}, 2)
-	go copyClose(done, remote, local)
-	go copyClose(done, local, remote)
+	go copyClose(done, remote, local, func(n uint64) {
+		if stats != nil {
+			stats.UploadBytes.Add(n)
+		}
+	})
+	go copyClose(done, local, remote, func(n uint64) {
+		if stats != nil {
+			stats.DownloadBytes.Add(n)
+		}
+	})
 	<-done
 }
 
@@ -179,8 +208,22 @@ func formatTargets(targets []config.ForwardTarget) string {
 	}
 	return strings.Join(addrs, ", ")
 }
-func copyClose(done chan<- struct{}, dst net.Conn, src net.Conn) {
-	_, _ = io.Copy(dst, src)
+
+type countingWriter struct {
+	w   io.Writer
+	add func(uint64)
+}
+
+func (w countingWriter) Write(p []byte) (int, error) {
+	n, err := w.w.Write(p)
+	if n > 0 && w.add != nil {
+		w.add(uint64(n))
+	}
+	return n, err
+}
+
+func copyClose(done chan<- struct{}, dst net.Conn, src net.Conn, add func(uint64)) {
+	_, _ = io.Copy(countingWriter{w: dst, add: add}, src)
 	_ = dst.Close()
 	done <- struct{}{}
 }
