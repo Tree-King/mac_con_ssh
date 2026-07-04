@@ -58,6 +58,11 @@ func Run(ctx context.Context, name string, server config.Server) error {
 		if !server.Reconnect.Enabled {
 			return err
 		}
+		var targetDialErr *forward.TargetDialError
+		if errors.As(err, &targetDialErr) {
+			log.Printf("forward target dial failed; reconnecting SSH immediately: %v", targetDialErr)
+			continue
+		}
 		log.Printf("reconnecting in %s", delay)
 		if !sleep(ctx, delay) {
 			return ctx.Err()
