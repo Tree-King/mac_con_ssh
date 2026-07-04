@@ -13,8 +13,12 @@ import (
 )
 
 func Run(ctx context.Context, name string, server config.Server) error {
+	return RunWithStats(ctx, name, server, nil)
+}
+
+func RunWithStats(ctx context.Context, name string, server config.Server, stats *forward.Stats) error {
 	if server.Direct {
-		return runDirect(ctx, server)
+		return runDirect(ctx, server, stats)
 	}
 	attempt := 0
 	delay := time.Duration(server.Reconnect.InitialDelaySeconds) * time.Second
@@ -36,7 +40,7 @@ func Run(ctx context.Context, name string, server config.Server) error {
 		attempt = 0
 		delay = time.Duration(server.Reconnect.InitialDelaySeconds) * time.Second
 		sessionCtx, cancel := context.WithCancel(ctx)
-		mgr := forward.New(server.Forwards)
+		mgr := forward.NewWithStats(server.Forwards, stats)
 		if err := mgr.ListenAll(); err != nil {
 			cancel()
 			_ = client.Close()
@@ -77,8 +81,8 @@ func (disabledDialer) Dial(string, string) (net.Conn, error) {
 	return nil, errors.New("SSH dialer is unavailable for direct forwarding")
 }
 
-func runDirect(ctx context.Context, server config.Server) error {
-	mgr := forward.New(server.Forwards)
+func runDirect(ctx context.Context, server config.Server, stats *forward.Stats) error {
+	mgr := forward.NewWithStats(server.Forwards, stats)
 	if err := mgr.ListenAll(); err != nil {
 		return err
 	}
