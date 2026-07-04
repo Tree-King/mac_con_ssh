@@ -17,6 +17,22 @@ type dialer interface {
 	Dial(network, addr string) (net.Conn, error)
 }
 
+// TargetDialError marks failures that happen while creating the per-connection
+// remote side of a forward. For SSH-backed forwards this commonly means the
+// underlying SSH transport went stale (for example after the computer wakes
+// from sleep), so callers can reconnect the SSH session immediately.
+type TargetDialError struct {
+	Forward string
+	Target  string
+	Err     error
+}
+
+func (e *TargetDialError) Error() string {
+	return fmt.Sprintf("forward %s failed to connect target %s: %v", e.Forward, e.Target, e.Err)
+}
+
+func (e *TargetDialError) Unwrap() error { return e.Err }
+
 type Manager struct {
 	Forwards  []config.Forward
 	listeners []net.Listener
@@ -79,7 +95,7 @@ func handle(client dialer, f config.Forward, local net.Conn, errc chan<- error) 
 	defer local.Close()
 	remote, remoteAddr, err := dialForwardTarget(client, f)
 	if err != nil {
-		err = fmt.Errorf("forward %s failed to connect target %s: %w", f.Name, formatForwardDestination(f), err)
+		err = &TargetDialError{Forward: f.Name, Target: formatForwardDestination(f), Err: err}
 		log.Print(err)
 		select {
 		case errc <- err:

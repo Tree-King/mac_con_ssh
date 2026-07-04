@@ -28,6 +28,10 @@ func TestHandleReportsDialFailure(t *testing.T) {
 
 	select {
 	case err := <-errCh:
+		var targetDialErr *TargetDialError
+		if !errors.As(err, &targetDialErr) {
+			t.Fatalf("error type = %T, want *TargetDialError", err)
+		}
 		got := err.Error()
 		if !strings.Contains(got, "forward db failed to connect target 10.10.10.109:50000") {
 			t.Fatalf("error = %q, want forward and remote address context", got)
