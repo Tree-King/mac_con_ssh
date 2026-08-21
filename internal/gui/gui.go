@@ -5,6 +5,8 @@ package gui
 import (
 	"context"
 	"fmt"
+	"io"
+	"log"
 	"net"
 	"os"
 	"sort"
@@ -24,6 +26,10 @@ import (
 
 // Run starts a cross-platform non-web control panel for ssh-tunnel.
 func Run(configPath string) error {
+	oldLogOutput := log.Writer()
+	log.SetOutput(io.Discard)
+	defer log.SetOutput(oldLogOutput)
+
 	if configPath == "" {
 		configPath = config.DefaultPath()
 	}
@@ -465,7 +471,9 @@ func formatBytes(n uint64) string {
 }
 
 func (p *controlPanel) setStatus(text string) {
+	p.status.Clear()
 	p.status.SetText(text)
+	p.status.ScrollToBeginning()
 }
 
 func (p *controlPanel) queueStatus(text string) {
