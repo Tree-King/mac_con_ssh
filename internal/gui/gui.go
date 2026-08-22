@@ -34,9 +34,10 @@ func Run(configPath string) error {
 		configPath = config.DefaultPath()
 	}
 	panel := &controlPanel{
-		app:        tview.NewApplication(),
-		configPath: configPath,
-		statuses:   make(map[string]*serverRuntime),
+		app:         tview.NewApplication(),
+		configPath:  configPath,
+		statuses:    make(map[string]*serverRuntime),
+		diagnostics: make(map[string]serverDiagnostics),
 	}
 	panel.build()
 	panel.loadConfig()
@@ -61,8 +62,17 @@ type controlPanel struct {
 	selected   string
 	configOpen bool
 
-	mu       sync.Mutex
-	statuses map[string]*serverRuntime
+	mu          sync.Mutex
+	statuses    map[string]*serverRuntime
+	diagnostics map[string]serverDiagnostics
+	checkSeq    int
+}
+
+type serverDiagnostics struct {
+	checking bool
+	updated  time.Time
+	summary  string
+	details  string
 }
 
 type serverRuntime struct {
@@ -80,12 +90,12 @@ type serverRuntime struct {
 func (p *controlPanel) build() {
 	p.path = tview.NewInputField().SetLabel("Config: ").SetText(p.configPath).SetFieldWidth(0)
 	p.editor = tview.NewTextArea().SetWrap(false)
-	p.editor.SetTitle(" YAML 配置（默认隐藏，按 o 打开 / h 关闭） ").SetBorder(true)
+	p.editor.SetTitle(" 配置保险箱 ").SetBorder(true).SetBorderColor(tcell.ColorDarkCyan).SetTitleColor(tcell.ColorLightCyan)
 	p.editor.SetText("配置包含密码、TOTP 种子等敏感信息，默认不显示。按 o 打开，编辑后 Ctrl+S 保存；按 h 关闭并清空显示。", false)
 	p.status = tview.NewTextView().SetDynamicColors(true).SetWrap(true)
-	p.status.SetTitle(" 状态 / 备选 ").SetBorder(true)
+	p.status.SetTitle(" 运行雷达 / 自动体检 ").SetBorder(true).SetBorderColor(tcell.ColorDarkSlateBlue).SetTitleColor(tcell.ColorAqua)
 	p.servers = tview.NewList().ShowSecondaryText(false)
-	p.servers.SetTitle(" 连接 ").SetBorder(true)
+	p.servers.SetTitle(" 隧道编队 ").SetBorder(true).SetBorderColor(tcell.ColorDarkCyan).SetTitleColor(tcell.ColorLightCyan)
 
 	p.path.SetDoneFunc(func(key tcell.Key) {
 		if key == tcell.KeyEnter {
@@ -97,14 +107,15 @@ func (p *controlPanel) build() {
 		names := p.serverNames()
 		if index >= 0 && index < len(names) {
 			p.selected = names[index]
-			p.refreshStatus()
+			p.refreshDashboard()
 		}
 	})
 
-	help := tview.NewTextView().SetDynamicColors(true).SetText("[green]o[-] 打开配置  [green]h[-] 关闭配置  [green]Ctrl+S[-] 保存  [green]Ctrl+R[-] 重载  [green]c[-] 检查  [green]s/x[-] 启停  [green]q[-] 退出")
+	hero := tview.NewTextView().SetDynamicColors(true).SetText("[::b][aqua]SSH Tunnel Control[-]  [gray]所有连接状态集中显示，延迟自动刷新[-]")
+	help := tview.NewTextView().SetDynamicColors(true).SetText("[aqua]s[-] 启动  [aqua]x[-] 停止  [aqua]c[-] 立即体检  [aqua]o/h[-] 打开/隐藏配置  [aqua]Ctrl+S/R[-] 保存/重载  [aqua]q[-] 退出")
 	left := tview.NewFlex().SetDirection(tview.FlexRow).AddItem(p.path, 1, 0, false).AddItem(p.servers, 0, 1, true)
-	right := tview.NewFlex().SetDirection(tview.FlexRow).AddItem(p.editor, 0, 3, false).AddItem(p.status, 0, 2, false).AddItem(help, 1, 0, false)
-	root := tview.NewFlex().AddItem(left, 34, 0, true).AddItem(right, 0, 1, false)
+	right := tview.NewFlex().SetDirection(tview.FlexRow).AddItem(hero, 1, 0, false).AddItem(p.status, 0, 4, false).AddItem(p.editor, 0, 2, false).AddItem(help, 1, 0, false)
+	root := tview.NewFlex().AddItem(left, 36, 0, true).AddItem(right, 0, 1, false)
 
 	p.app.SetRoot(root, true).EnableMouse(true).SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch {
@@ -121,7 +132,7 @@ func (p *controlPanel) build() {
 			p.closeConfig()
 			return nil
 		case event.Rune() == 'c':
-			p.checkSelected()
+			p.checkAll()
 			return nil
 		case event.Rune() == 's':
 			p.startSelected()
@@ -145,7 +156,7 @@ func (p *controlPanel) openConfig() {
 func (p *controlPanel) closeConfig() {
 	p.configOpen = false
 	p.editor.SetText("配置包含密码、TOTP 种子等敏感信息，已隐藏。按 o 打开。", false)
-	p.setStatus("[green]配置内容已关闭并从界面清空。[-]")
+	p.refreshDashboard()
 }
 
 func (p *controlPanel) startTicker() {
@@ -176,7 +187,7 @@ func (p *controlPanel) sampleRuntimeStats() {
 		rt.lastUpload, rt.lastDownload, rt.lastSample = up, down, now
 	}
 	p.mu.Unlock()
-	p.app.QueueUpdateDraw(func() { p.refreshStatus() })
+	p.app.QueueUpdateDraw(func() { p.refreshDashboard() })
 }
 
 func (p *controlPanel) loadConfig() {
@@ -205,9 +216,11 @@ func (p *controlPanel) loadConfig() {
 	p.rebuildServerList()
 	if len(warnings) > 0 {
 		p.setStatus("[yellow]" + strings.Join(warnings, "\n") + "[-]")
+		p.checkAll()
 		return
 	}
-	p.setStatus("[green]配置已载入:[-] " + path)
+	p.refreshDashboard()
+	p.checkAll()
 }
 
 func (p *controlPanel) saveConfig() {
@@ -229,8 +242,19 @@ func (p *controlPanel) saveConfig() {
 
 func (p *controlPanel) rebuildServerList() {
 	p.servers.Clear()
-	for _, name := range p.serverNames() {
+	names := p.serverNames()
+	selectedExists := false
+	for _, name := range names {
+		if name == p.selected {
+			selectedExists = true
+		}
 		p.servers.AddItem(p.listLabel(name), "", 0, nil)
+	}
+	if !selectedExists {
+		p.selected = ""
+		if len(names) > 0 {
+			p.selected = names[0]
+		}
 	}
 }
 
@@ -249,11 +273,21 @@ func (p *controlPanel) serverNames() []string {
 func (p *controlPanel) listLabel(name string) string {
 	p.mu.Lock()
 	rt := p.statuses[name]
+	diag := p.diagnostics[name]
 	p.mu.Unlock()
 	if rt != nil && rt.running {
-		return "● " + name
+		return "[green]◆[-] " + name
 	}
-	return "○ " + name
+	if diag.checking {
+		return "[yellow]◌[-] " + name
+	}
+	if strings.HasPrefix(diag.summary, "异常") {
+		return "[red]●[-] " + name
+	}
+	if strings.HasPrefix(diag.summary, "健康") {
+		return "[aqua]●[-] " + name
+	}
+	return "[gray]○[-] " + name
 }
 
 func (p *controlPanel) selectedServer() (config.Server, bool) {
@@ -264,53 +298,108 @@ func (p *controlPanel) selectedServer() (config.Server, bool) {
 	return s, err == nil
 }
 
-func (p *controlPanel) checkSelected() {
-	s, ok := p.selectedServer()
-	if !ok {
-		p.setStatus("[yellow]请先选择一个连接。[-]")
+func (p *controlPanel) checkAll() {
+	if p.cfg == nil {
 		return
 	}
-	name := p.selected
-	p.setStatus("[yellow]正在检查 " + name + "...[-]")
-	go func() {
-		var b strings.Builder
-		fmt.Fprintf(&b, "[::b]%s[::-]\n\n", tview.Escape(name))
-		if err := s.Validate(); err != nil {
-			fmt.Fprintf(&b, "[red]配置校验失败:[-] %s\n", tview.Escape(err.Error()))
-			p.queueStatus(b.String())
-			return
-		}
-		for _, f := range s.Forwards {
-			p.checkForward(&b, s, f)
-		}
-		if s.Direct {
-			fmt.Fprintf(&b, "\n[green]直连 TCP 转发配置有效。[-]\n")
-		} else {
-			p.checkSSH(&b, name, s)
-		}
-		p.queueStatus(b.String())
-	}()
+	p.mu.Lock()
+	p.checkSeq++
+	seq := p.checkSeq
+	p.diagnostics = make(map[string]serverDiagnostics, len(p.cfg.Servers))
+	servers := make(map[string]config.Server, len(p.cfg.Servers))
+	for name, srv := range p.cfg.Servers {
+		servers[name] = srv
+		p.diagnostics[name] = serverDiagnostics{checking: true, summary: "检查中"}
+	}
+	p.mu.Unlock()
+	p.rebuildServerList()
+	p.refreshDashboard()
+	for name, srv := range servers {
+		go p.checkServer(seq, name, srv)
+	}
 }
 
-func (p *controlPanel) checkForward(b *strings.Builder, s config.Server, f config.Forward) {
+func (p *controlPanel) checkServer(seq int, name string, s config.Server) {
+	summary, details := p.buildDiagnostics(name, s)
+	p.mu.Lock()
+	if seq != p.checkSeq {
+		p.mu.Unlock()
+		return
+	}
+	p.diagnostics[name] = serverDiagnostics{
+		updated: time.Now(),
+		summary: summary,
+		details: details,
+	}
+	p.mu.Unlock()
+	p.app.QueueUpdateDraw(func() {
+		p.rebuildServerList()
+		p.refreshDashboard()
+	})
+}
+
+func (p *controlPanel) buildDiagnostics(name string, s config.Server) (string, string) {
+	var b strings.Builder
+	healthy := true
+	fmt.Fprintf(&b, "[::b]%s[::-]\n", tview.Escape(name))
+	if err := s.Validate(); err != nil {
+		fmt.Fprintf(&b, "[red]配置校验失败:[-] %s\n", tview.Escape(err.Error()))
+		return "异常：配置无效", b.String()
+	}
+	for _, f := range s.Forwards {
+		if !p.checkForward(&b, name, s, f) {
+			healthy = false
+		}
+	}
+	if s.Direct {
+		if healthy {
+			fmt.Fprintf(&b, "[green]直连转发就绪[-]\n")
+		}
+		return healthSummary(healthy), b.String()
+	}
+	if !p.checkSSH(&b, name, s) {
+		healthy = false
+	}
+	return healthSummary(healthy), b.String()
+}
+
+func (p *controlPanel) checkForward(b *strings.Builder, name string, s config.Server, f config.Forward) bool {
+	healthy := true
 	addr := net.JoinHostPort(f.LocalHost, fmt.Sprint(f.LocalPort))
-	ln, err := net.Listen("tcp", addr)
-	if err != nil {
-		fmt.Fprintf(b, "- [red]本地监听 %s 不可用:[-] %s\n", tview.Escape(addr), tview.Escape(err.Error()))
+	if p.isRunning(name) {
+		fmt.Fprintf(b, "- [green]本地监听 %s 已由当前连接接管[-]\n", tview.Escape(addr))
 	} else {
-		_ = ln.Close()
-		fmt.Fprintf(b, "- [green]本地监听 %s 可用[-]\n", tview.Escape(addr))
+		ln, err := net.Listen("tcp", addr)
+		if err != nil {
+			fmt.Fprintf(b, "- [red]本地监听 %s 不可用:[-] %s\n", tview.Escape(addr), tview.Escape(err.Error()))
+			healthy = false
+		} else {
+			_ = ln.Close()
+			fmt.Fprintf(b, "- [green]本地监听 %s 可用[-]\n", tview.Escape(addr))
+		}
 	}
 	if s.Direct {
 		for _, t := range f.DirectCandidates() {
-			probeTCP(b, "备选直连", net.JoinHostPort(t.Host, fmt.Sprint(t.Port)))
+			if !probeTCP(b, "备选直连", net.JoinHostPort(t.Host, fmt.Sprint(t.Port))) {
+				healthy = false
+			}
 		}
 	}
+	return healthy
 }
 
-func (p *controlPanel) checkSSH(b *strings.Builder, name string, s config.Server) {
+func (p *controlPanel) isRunning(name string) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	rt := p.statuses[name]
+	return rt != nil && rt.running
+}
+
+func (p *controlPanel) checkSSH(b *strings.Builder, name string, s config.Server) bool {
+	healthy := true
 	if _, err := totp.Generate(s.Auth.TOTPSeed); err != nil {
 		fmt.Fprintf(b, "\n[red]TOTP 种子无效:[-] %s\n", tview.Escape(err.Error()))
+		healthy = false
 	} else {
 		fmt.Fprintf(b, "\n[green]TOTP 种子格式有效[-]\n")
 	}
@@ -324,21 +413,31 @@ func (p *controlPanel) checkSSH(b *strings.Builder, name string, s config.Server
 	}
 	if err != nil {
 		fmt.Fprintf(b, "\n[red]无可用 SSH 备选:[-] %s\n", tview.Escape(err.Error()))
+		healthy = false
 	} else {
 		fmt.Fprintf(b, "\n[green]%s 当前最佳 SSH 主机:[-] %s\n", tview.Escape(name), tview.Escape(selected))
 	}
+	return healthy
 }
 
-func probeTCP(b *strings.Builder, label, addr string) {
+func probeTCP(b *strings.Builder, label, addr string) bool {
 	start := time.Now()
 	conn, err := net.DialTimeout("tcp", addr, 3*time.Second)
 	latency := time.Since(start)
 	if err != nil {
 		fmt.Fprintf(b, "- [red]%s %s 不可达[-]（%s）：%s\n", tview.Escape(label), tview.Escape(addr), latency.Round(time.Millisecond), tview.Escape(err.Error()))
-		return
+		return false
 	}
 	_ = conn.Close()
 	fmt.Fprintf(b, "- [green]%s %s 可达[-]（%s）\n", tview.Escape(label), tview.Escape(addr), latency.Round(time.Millisecond))
+	return true
+}
+
+func healthSummary(healthy bool) string {
+	if healthy {
+		return "健康"
+	}
+	return "异常：部分检查失败"
 }
 
 func (p *controlPanel) startSelected() {
@@ -357,7 +456,7 @@ func (p *controlPanel) startSelected() {
 	p.statuses[name] = &serverRuntime{cancel: cancel, running: true, last: "启动中", stats: &forward.Stats{}, lastSample: time.Now()}
 	p.mu.Unlock()
 	p.rebuildServerList()
-	p.refreshStatus()
+	p.refreshDashboard()
 	go func() {
 		p.mu.Lock()
 		stats := p.statuses[name].stats
@@ -372,7 +471,7 @@ func (p *controlPanel) startSelected() {
 		p.mu.Unlock()
 		p.app.QueueUpdateDraw(func() {
 			p.rebuildServerList()
-			p.refreshStatus()
+			p.refreshDashboard()
 		})
 	}()
 }
@@ -381,7 +480,7 @@ func (p *controlPanel) stopSelected() {
 	if p.selected != "" {
 		p.stop(p.selected)
 		p.rebuildServerList()
-		p.refreshStatus()
+		p.refreshDashboard()
 	}
 }
 
@@ -402,47 +501,112 @@ func (p *controlPanel) stop(name string) {
 	p.mu.Unlock()
 }
 
-func (p *controlPanel) refreshStatus() {
-	if p.selected == "" {
+func (p *controlPanel) refreshDashboard() {
+	names := p.serverNames()
+	if len(names) == 0 {
+		p.setStatus("[yellow]未载入连接配置。[-]")
 		return
 	}
-	state := "未运行"
-	var up, down uint64
-	var upSpeed, downSpeed float64
-	p.mu.Lock()
-	if rt := p.statuses[p.selected]; rt != nil {
-		if rt.running {
-			state = "运行中"
-		} else if rt.last != "" {
-			state = rt.last
-		}
-		if rt.stats != nil {
-			up, down = rt.stats.Snapshot()
-		}
-		upSpeed, downSpeed = rt.upSpeed, rt.downSpeed
+	if p.selected == "" {
+		p.selected = names[0]
 	}
+
+	var running, checking, failed int
+	type row struct {
+		name       string
+		state      string
+		summary    string
+		updated    time.Time
+		up, down   uint64
+		upSpeed    float64
+		downSpeed  float64
+		forwardNum int
+	}
+	rows := make([]row, 0, len(names))
+	p.mu.Lock()
+	for _, name := range names {
+		state := "未运行"
+		var up, down uint64
+		var upSpeed, downSpeed float64
+		if rt := p.statuses[name]; rt != nil {
+			if rt.running {
+				state = "运行中"
+				running++
+			} else if rt.last != "" {
+				state = rt.last
+			}
+			if rt.stats != nil {
+				up, down = rt.stats.Snapshot()
+			}
+			upSpeed, downSpeed = rt.upSpeed, rt.downSpeed
+		}
+		diag := p.diagnostics[name]
+		if diag.checking {
+			checking++
+		}
+		if strings.HasPrefix(diag.summary, "异常") {
+			failed++
+		}
+		forwardNum := 0
+		if p.cfg != nil {
+			forwardNum = len(p.cfg.Servers[name].Forwards)
+		}
+		rows = append(rows, row{name: name, state: state, summary: diag.summary, updated: diag.updated, up: up, down: down, upSpeed: upSpeed, downSpeed: downSpeed, forwardNum: forwardNum})
+	}
+	selectedDiag := p.diagnostics[p.selected]
 	p.mu.Unlock()
+
 	var b strings.Builder
-	fmt.Fprintf(&b, "[::b]%s[::-]\n\n状态：%s\n", tview.Escape(p.selected), tview.Escape(state))
-	fmt.Fprintf(&b, "实时速度：↑ %s/s  ↓ %s/s\n", formatBytes(uint64(upSpeed)), formatBytes(uint64(downSpeed)))
-	fmt.Fprintf(&b, "累计流量：↑ %s  ↓ %s  合计 %s\n\n", formatBytes(up), formatBytes(down), formatBytes(up+down))
+	fmt.Fprintf(&b, "[::b][aqua]舰桥总览[::-]  连接 %d  运行 %d  检查中 %d  异常 %d\n", len(names), running, checking, failed)
+	fmt.Fprintf(&b, "[gray]配置：%s[-]\n\n", tview.Escape(p.configPath))
+	b.WriteString("[::b]集中状态[::-]\n")
+	for _, r := range rows {
+		mark := "[gray]○[-]"
+		if r.state == "运行中" {
+			mark = "[green]◆[-]"
+		} else if strings.HasPrefix(r.summary, "异常") {
+			mark = "[red]●[-]"
+		} else if r.summary == "健康" {
+			mark = "[aqua]●[-]"
+		} else if r.summary == "检查中" {
+			mark = "[yellow]◌[-]"
+		}
+		summary := r.summary
+		if summary == "" {
+			summary = "等待自动体检"
+		}
+		updated := "未检查"
+		if !r.updated.IsZero() {
+			updated = r.updated.Format("15:04:05")
+		}
+		fmt.Fprintf(&b, "%s %-18s %-10s %-18s 转发:%-2d ↑%s/s ↓%s/s 合计:%s  %s\n",
+			mark,
+			tview.Escape(r.name),
+			tview.Escape(r.state),
+			tview.Escape(summary),
+			r.forwardNum,
+			formatBytes(uint64(r.upSpeed)),
+			formatBytes(uint64(r.downSpeed)),
+			formatBytes(r.up+r.down),
+			updated,
+		)
+	}
+
 	if s, ok := p.selectedServer(); ok {
-		b.WriteString("转发列表：\n")
+		fmt.Fprintf(&b, "\n[::b][aqua]当前聚焦：%s[::-]\n", tview.Escape(p.selected))
+		b.WriteString("转发拓扑：\n")
 		for _, f := range s.Forwards {
 			local := net.JoinHostPort(f.LocalHost, fmt.Sprint(f.LocalPort))
-			fmt.Fprintf(&b, "- %s  %s -> %s\n", tview.Escape(f.Name), tview.Escape(local), tview.Escape(forwardDestinationLabel(f)))
-			for _, target := range f.DirectCandidates() {
-				fmt.Fprintf(&b, "  · 备选 %s  延迟：按 c 检查\n", tview.Escape(net.JoinHostPort(target.Host, fmt.Sprint(target.Port))))
-			}
+			fmt.Fprintf(&b, "- %s  [gray]%s[-] -> %s\n", tview.Escape(f.Name), tview.Escape(local), tview.Escape(forwardDestinationLabel(f)))
 		}
-		if !s.Direct {
-			b.WriteString("\nSSH 备选：\n")
-			for _, host := range s.HostCandidates() {
-				fmt.Fprintf(&b, "- %s  延迟：按 c 检查\n", tview.Escape(net.JoinHostPort(host, fmt.Sprint(s.Port))))
-			}
+		if selectedDiag.checking {
+			b.WriteString("\n[yellow]正在自动体检当前连接...[-]\n")
+		} else if selectedDiag.details != "" {
+			b.WriteString("\n")
+			b.WriteString(selectedDiag.details)
 		}
 	}
-	b.WriteString("\n按 c 检查所有备选地址延迟；按 o 打开配置，按 h 关闭配置。")
+	b.WriteString("\n[gray]提示：体检会在载入/重载后自动执行；按 c 可立即刷新全部延迟。[-]")
 	p.setStatus(b.String())
 }
 
